@@ -1,4 +1,4 @@
-use candle_core::{Device, DType, Tensor, Result as CandleResult};
+use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
 pub struct XorDataset {
     inputs: Vec<Tensor>,
@@ -16,8 +16,8 @@ impl XorDataset {
         let mut ins = Vec::with_capacity(4);
         let mut labs = Vec::with_capacity(4);
         for (x, y) in pairs {
-            ins.push(Tensor::from_vec(x, (2,), device)?);
-            labs.push(Tensor::from_vec(y, (1,), device)?);
+            ins.push(Tensor::from_vec(x, (2, 1), device)?);
+            labs.push(Tensor::from_vec(y, (1, 1), device)?);
         }
         Ok(Self {
             inputs: ins,

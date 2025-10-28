@@ -1,10 +1,11 @@
 pub mod hebbian;
 
+use crate::layer::Layer;
 use candle_core::{Result as CandleResult, Tensor};
-use crate::layer::basic::Layer;
 
 pub trait SynapseUpdate: Send + Sync {
-    fn update(&self, weight: &Tensor, pre: &Tensor, post: &Tensor, dt: f32) -> CandleResult<Tensor>;
+    fn update(&self, weight: &Tensor, pre: &Tensor, post: &Tensor, dt: f32)
+    -> CandleResult<Tensor>;
 }
 
 pub struct Synapse {
@@ -34,10 +35,10 @@ impl Synapse {
     }
 
     // update weights from the rule, given references to layers vector
-    pub fn update(&mut self, layers: &mut Vec<Layer>) -> CandleResult<()> {
-        let pre_act = layers[self.pre].activity()?;
-        let post_act = layers[self.post].activity()?;
-        let new_w = self.rule.update(&self.weight, &pre_act, &post_act, 1.0)?;
+    pub fn update(&mut self, layers: &mut Vec<Box<dyn Layer>>, dt: f32) -> CandleResult<()> {
+        let pre_s = layers[self.pre].output()?;
+        let post_s = layers[self.post].output()?;
+        let new_w = self.rule.update(&self.weight, &pre_s, &post_s, dt)?;
         self.weight = new_w;
         Ok(())
     }

@@ -1,34 +1,47 @@
-use crate::layer::basic::Layer;
+use crate::layer::Layer;
 use crate::synapse::{Synapse, SynapseUpdate};
-use candle_core::{Device, DType, Tensor, Result as CandleResult};
+use candle_core::{DType, Device, Result as CandleResult, Tensor};
 use std::rc::Rc;
 
 pub struct Model {
     pub device: Device,
-    pub layers: Vec<Layer>,
+    pub layer_inputs: Vec<Tensor>,
+    pub layers: Vec<Box<dyn Layer>>,
     pub synapses: Vec<Synapse>,
+    pub dt: f32,
 }
 
+/// data returned as output from prcess function
 pub struct ProcessOutput {
-    // store activations at a few timesteps for inspection/plotting
-    pub timestep_activity: Vec<Tensor>,
+    pub output_activity: Vec<Tensor>,
+    pub final_output: Tensor,
 }
 
 impl Model {
-    pub fn new(device: Device) -> Self {
+    pub fn new(device: Device, dt: f32) -> Self {
         Self {
             device,
+            layer_inputs: vec![],
             layers: vec![],
             synapses: vec![],
+            dt,
         }
     }
 
-    pub fn add_layer(&mut self, l: Layer) {
+    pub fn add_layer(&mut self, l: Box<dyn Layer>) -> CandleResult<()> {
+        self.layer_inputs
+            .push(Tensor::zeros((l.size(), 1), DType::F32, &self.device)?);
         self.layers.push(l);
+        Ok(())
     }
 
     // synapse rule is boxed; we create synapse between layer `pre` and `post`.
-    pub fn add_synapse(&mut self, pre_idx: usize, post_idx: usize, rule: Box<dyn SynapseUpdate> ) -> CandleResult<()> {
+    pub fn add_synapse(
+        &mut self,
+        pre_idx: usize,
+        post_idx: usize,
+        rule: Box<dyn SynapseUpdate>,
+    ) -> CandleResult<()> {
         let pre = self.layers[pre_idx].size();
         let post = self.layers[post_idx].size();
         let s = Synapse::new(pre_idx, post_idx, pre, post, rule.into(), &self.device)?;
@@ -37,33 +50,57 @@ impl Model {
     }
 
     // Run one timestep: update layers and synapses once.
-    pub fn step(&mut self, external_inputs: Option<&Tensor>) -> CandleResult<()> {
-        // 1) compute local global signals (none for minimal example)
-        // 2) step each layer: (this computes new activities from internal state and optional clamped inputs)
-        for (i, layer) in self.layers.iter_mut().enumerate() {
-            let input = if i == 0 { external_inputs } else { None };
-            layer.step(input)?;
+    pub fn step(&mut self, input: &Tensor) -> CandleResult<()> {
+        // first layer is clamped to input
+        self.layer_inputs[0] = input.clone();
+        // clear other layer inputs
+        for i in 1..self.layer_inputs.len() {
+            self.layer_inputs[i] =
+                Tensor::zeros((self.layers[i].size(), 1), DType::F32, &self.device)?;
         }
 
-        // 3) update synapses given pre/post activities
+        // go through all synapses to accumulate inputs to layers
+        for syn in self.synapses.iter() {
+            let pre_out = self.layers[syn.pre].output()?;
+            let w_pre = syn.weight.matmul(&pre_out)?;
+            self.layer_inputs[syn.post] = self.layer_inputs[syn.post].add(&w_pre)?;
+        }
+
+        // calculate layer dynamics
+        for (layer_input, layer) in self.layer_inputs.iter().zip(self.layers.iter_mut()) {
+            layer.step(layer_input, self.dt)?;
+        }
+
+        // calculate synapse updates
         for syn in self.synapses.iter_mut() {
-            syn.update(&mut self.layers)?;
+            syn.update(&mut self.layers, self.dt)?;
         }
 
         Ok(())
     }
 
-    // run for T timesteps, optionally clamping inputs/outputs, and return collected outputs
-    pub fn process(&mut self, clamp_input: Option<&Tensor>, _clamp_output: Option<&Tensor>, timesteps: usize) -> CandleResult<ProcessOutput> {
+    // run for T timesteps, and return collected outputs
+    pub fn process(
+        &mut self,
+        input: &Tensor,
+        _output: Option<&Tensor>,
+        timesteps: usize,
+        collect_data: bool,
+    ) -> CandleResult<ProcessOutput> {
         let mut out = ProcessOutput {
-            timestep_activity: vec![],
+            output_activity: vec![],
+            final_output: Tensor::zeros((0, 0), DType::F32, &self.device)?,
         };
         for _ in 0..timesteps {
-            self.step(clamp_input)?;
-            // store a snapshot (e.g., layer 0 activity) for inspection
-            let a0 = self.layers[0].activity()?;
-            out.timestep_activity.push(a0);
+            self.step(&input)?;
+
+            if collect_data {
+                // inspection test
+                let a0 = self.layers.last().unwrap().activity()?;
+                out.output_activity.push(a0.clone());
+            }
         }
+        out.final_output = self.layers.last().unwrap().output()?.clone();
         Ok(out)
     }
 }

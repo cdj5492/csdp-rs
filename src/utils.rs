@@ -1,4 +1,4 @@
-use candle_core::{Tensor, Result as CandleResult};
+use candle_core::{Result as CandleResult, Tensor};
 use std::fs::File;
 use std::io::Write;
 
