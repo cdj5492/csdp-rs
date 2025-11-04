@@ -18,10 +18,9 @@ impl BernoulliLayer {
 }
 
 impl Layer for BernoulliLayer {
-    fn step(&mut self, input: &Tensor, _dt: f32) -> CandleResult<()> {
+    fn step(&mut self, _dt: f32) -> CandleResult<()> {
         // clamp input to [0,1]
-        self.inputs = input.clone();
-        let clamped = input.clamp(0.0, 1.0)?;
+        let clamped = self.inputs.clamp(0.0, 1.0)?;
         let random_vals = Tensor::rand_like(&clamped, 0.0, 1.1)?;
         self.spikes = clamped.ge(&random_vals)?.to_dtype(DType::F32)?;
         Ok(())
@@ -37,5 +36,21 @@ impl Layer for BernoulliLayer {
 
     fn size(&self) -> usize {
         self.size
+    }
+    
+    fn add_input(&mut self, input: &Tensor) -> CandleResult<()> {
+        self.inputs = self.inputs.add(input)?;
+        Ok(())
+    }
+
+    fn reset_input(&mut self) -> CandleResult<()> {
+        self.inputs = self.inputs.zeros_like()?;
+        Ok(())
+    }
+
+    fn reset(&mut self) -> CandleResult<()> {
+        self.inputs = self.inputs.zeros_like()?;
+        self.spikes = self.spikes.zeros_like()?;
+        Ok(())
     }
 }
