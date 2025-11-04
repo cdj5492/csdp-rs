@@ -2,6 +2,7 @@ use candle_core::{Result as CandleResult, Tensor};
 use std::fs::File;
 use std::io::Write;
 
+#[allow(dead_code)]
 pub fn save_tensor_flat_csv(path: &str, t: &Tensor) -> CandleResult<()> {
     // flatten and write a single-column CSV of floats
     let flat = t.flatten_all()?;

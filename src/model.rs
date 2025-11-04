@@ -1,7 +1,6 @@
 use crate::layer::Layer;
 use crate::synapse::{Synapse, SynapseUpdate};
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
-use std::rc::Rc;
 
 pub struct Model {
     pub device: Device,

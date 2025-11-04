@@ -1,18 +1,19 @@
 use crate::synapse::SynapseUpdate;
 use candle_core::{Result as CandleResult, Tensor};
 
+
 #[derive(Clone)]
-pub struct Hebbian {
+pub struct CSDP {
     pub lr: f32,
 }
 
-impl Hebbian {
+impl CSDP {
     pub fn new(lr: f32) -> Self {
         Self { lr }
     }
 }
 
-impl SynapseUpdate for Hebbian {
+impl SynapseUpdate for CSDP {
     fn update(
         &self,
         weight: &Tensor,

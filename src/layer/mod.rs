@@ -1,5 +1,6 @@
 pub mod bernoulli;
 pub mod lif;
+pub mod goodness;
 
 use candle_core::{Result as CandleResult, Tensor};
 

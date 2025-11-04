@@ -1,9 +1,7 @@
 use crate::layer::Layer;
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
-use std::sync::Arc;
 
 pub struct BernoulliLayer {
-    device: Device,
     inputs: Tensor,
     spikes: Tensor,
     size: usize,
@@ -12,7 +10,6 @@ pub struct BernoulliLayer {
 impl BernoulliLayer {
     pub fn new(size: usize, device: &Device) -> CandleResult<Self> {
         Ok(Self {
-            device: device.clone(),
             inputs: Tensor::zeros((size, 1), DType::F32, device)?,
             spikes: Tensor::zeros((size, 1), DType::F32, device)?,
             size,

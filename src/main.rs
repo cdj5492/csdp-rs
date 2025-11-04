@@ -7,12 +7,12 @@ mod model;
 mod synapse;
 mod utils;
 
-use candle_core::{DType, Device, Tensor};
+use candle_core::Device;
 use dataset::xor::XorDataset;
 use layer::bernoulli::BernoulliLayer;
 use layer::lif::LIFLayer;
-use model::{Model, ProcessOutput};
-use synapse::hebbian::Hebbian;
+use model::Model;
+use synapse::csdp::CSDP;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let device = Device::new_cuda(0).unwrap_or(Device::Cpu);
@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         &device,
     )?))?;
 
-    let heb = Hebbian::new(1e-2_f32); // learning rate
+    let heb = CSDP::new(1e-2_f32); // learning rate
     model.add_synapse(0, 1, Box::new(heb.clone()))?;
     model.add_synapse(1, 2, Box::new(heb.clone()))?;
     model.add_synapse(2, 3, Box::new(heb))?;
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // training loop: unsupervised Hebbian run for a few epochs:
     for epoch in (0..n_epochs).tqdm() {
         for (input, _label) in ds.iter() {
-            let out = model.process(&input, None, 20, false)?;
+            let out = model.process(&input, None, 40, false)?;
 
             if epoch % 50 == 0 {
                 println!(

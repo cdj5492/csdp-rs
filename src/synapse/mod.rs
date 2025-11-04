@@ -1,4 +1,4 @@
-pub mod hebbian;
+pub mod csdp;
 
 use crate::layer::Layer;
 use candle_core::{Result as CandleResult, Tensor};

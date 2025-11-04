@@ -1,4 +1,4 @@
-use candle_core::{DType, Device, Result as CandleResult, Tensor};
+use candle_core::{Device, Result as CandleResult, Tensor};
 
 pub struct XorDataset {
     inputs: Vec<Tensor>,
