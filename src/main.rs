@@ -6,6 +6,7 @@ mod layer;
 mod model;
 mod synapse;
 mod utils;
+mod robot;
 
 use candle_core::Device;
 use dataset::xor::XorDataset;
