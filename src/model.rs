@@ -57,6 +57,10 @@ impl Model {
         // synapses between every hidden layer, but not output layer
         let mut synapses_forward = vec![];
         let mut synapses_backward = vec![];
+        
+        synapses_forward.push(
+            CSDP::new(input_layer.size(), layers[0].size(), device).ok()?
+        );
 
         for i in 0..layers.len() - 1 {
             let pre = layers[i].size();
