@@ -76,7 +76,8 @@ impl Model {
 
         // final layer. Connects to all hidden layers
         let output_layer = LIFLayer::new(
-            *layer_sizes.last().unwrap(),
+            // sum of all hidden layer sizes
+            layer_sizes.iter().skip(1).rev().skip(1).sum::<usize>(),
             tau_lif,
             g_thr,
             thresh_lambda,
@@ -126,13 +127,7 @@ impl Model {
         let post_input = self.hidden_synapses_forward[0].forward(self.input_layer.output()?)?;
         self.hidden_layers[0].add_input(&post_input)?;
 
-        // forward connections
-        for i in 1..self.hidden_layers.len() {
-            let pre_activity = self.hidden_layers[i - 1].output()?;
-            let post_activity = self.hidden_synapses_forward[i].forward(pre_activity)?;
-            self.hidden_layers[i].add_input(&post_activity)?;
-        }
-
+        // forward and backward hidden connections
         for i in 1..self.hidden_layers.len() {
             // cloning is cheap since Tensors are Arcs
             let activity_layer1 = self.hidden_layers[i - 1].output()?.clone();
@@ -147,29 +142,27 @@ impl Model {
                     &activity_layer1,
                     &activity_layer2,
                     self.dt,
-                );
+                )?;
                 self.hidden_synapses_backward[i - 1].update_weights(
                     &activity_layer2,
                     &activity_layer1,
                     self.dt,
-                );
+                )?;
             }
         }
 
-        // backward connections
-        // for i in (1..self.hidden_layers.len()) {
-        //     let pre_activity = self.hidden_layers[i - 1].output()?;
-        //     let post_activity = self.hidden_synapses_backward[i]
-        //         .forward(pre_activity)?;
-        //     self.hidden_layers[i].add_input(&post_activity)?;
-        // }
-
         // output layer connections from all hidden layers
-        for (i, layer) in self.hidden_layers.iter().enumerate() {
-            let pre_activity = layer.output()?;
-            let post_activity = self.output_synapses[i].forward(pre_activity)?;
-            self.output_layer.add_input(&post_activity)?;
+        // for (i, layer) in self.hidden_layers.iter().enumerate() {
+        //     let pre_activity = layer.output()?;
+        //     let post_activity = self.output_synapses[i].forward(pre_activity)?;
+        //     self.output_layer.add_input(&post_activity)?;
+        // }
+        let mut all_hidden_outputs = Vec::new();
+        for layer in self.hidden_layers.iter() {
+            all_hidden_outputs.push(layer.output()?.clone());
         }
+        let output_layer_input = Tensor::cat(&all_hidden_outputs, 0)?;
+        self.output_layer.add_input(&output_layer_input)?;
 
         // step all hidden layers
         for layer in self.hidden_layers.iter_mut() {
