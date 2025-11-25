@@ -5,18 +5,14 @@ use crate::robot::real_lerobot::LeRobot;
 use std::env;
 use std::error::Error;
 use std::fs::File;
-use std::io::stdout;
+use std::io::{self, Write};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossterm::{
-    ExecutableCommand,
-    event::{self, Event, KeyCode, KeyEventKind},
-    terminal::{disable_raw_mode, enable_raw_mode},
-};
 use serde::Serialize;
 
-// Structure to hold a single frame of data for CSV serialization
 #[derive(Serialize)]
 struct RobotFrame {
     timestamp_ms: u128,
@@ -29,59 +25,54 @@ struct RobotFrame {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    // Initialize Robot
     let mut robot = LeRobot::new(
         "/dev/ttyACM0",
-        [-0.0276, -1.6, 1.29, 1.1, 0.254, 0.0],
-        [-1.3, -1.6, -1.94, -2.0, -1.5, -0.0122],
-        [1.0, 1.7, 1.29, 1.2, 1.5, 1.1],
+        [
+            0.05982525072754008,
+            -0.32366994624387013,
+            0.08743690490948142,
+            -0.018407769454627854,
+            1.6659031356438065,
+            -1.0676506283684062,
+        ],
+        [-1.77, -0.32, -3.0, -3.0, -3.0, -1.07],
+        [2.22, 3.0, 0.085, -0.069, 3.0, 0.65],
     )
     .expect("Failed to initialize robot");
 
-    // Disable torque so user can manipulate the arm
+    robot.go_to_home_positions()?;
+
+    thread::sleep(Duration::from_millis(1000));
+
     robot.disable()?;
     println!("Robot initialized and torque disabled.");
 
-    // Setup terminal for raw input (to detect spacebar without Enter)
-    stdout().execute(crossterm::cursor::Hide)?;
-    enable_raw_mode()?;
+    // 1. Blocking wait for Start
+    print!("Press ENTER to START recording...");
+    io::stdout().flush()?;
+    let mut input_buffer = String::new();
+    io::stdin().read_line(&mut input_buffer)?;
 
-    println!("Press SPACE to START recording.\r");
+    println!("Recording started... Press ENTER to STOP.");
 
-    // wait for start
-    loop {
-        if let Event::Key(key) = event::read()?
-            && event::poll(Duration::from_millis(100))?
-        {
-            if key.kind == KeyEventKind::Press && key.code == KeyCode::Char(' ') {
-                break;
-            }
-            if key.code == KeyCode::Esc {
-                cleanup()?;
-                return Ok(());
-            }
-        }
-    }
+    // 2. Spawn a thread to listen for the Stop signal (Enter key)
+    let keep_running = Arc::new(AtomicBool::new(true));
+    let r_handle = keep_running.clone();
 
-    println!("Recording started... Press SPACE to STOP.\r");
+    thread::spawn(move || {
+        let mut s = String::new();
+        io::stdin().read_line(&mut s).ok();
+        r_handle.store(false, Ordering::Relaxed);
+    });
 
+    // 3. Recording Loop
     let mut records = Vec::new();
     let start_time = Instant::now();
-    let target_frame_time = Duration::from_secs_f64(1.0 / 30.0); // 30 FPS
+    let target_frame_time = Duration::from_secs_f64(1.0 / 30.0);
 
-    loop {
+    while keep_running.load(Ordering::Relaxed) {
         let frame_start = Instant::now();
 
-        // Check for stop condition (non-blocking)
-        if let Event::Key(key) = event::read()?
-            && event::poll(Duration::from_micros(0))?
-            && key.kind == KeyEventKind::Press
-            && key.code == KeyCode::Char(' ')
-        {
-            break;
-        }
-
-        // Record Data
         if let Ok(positions) = robot.get_motor_positions()
             && positions.len() == 6
         {
@@ -96,14 +87,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             });
         }
 
-        // Maintain 30 FPS
         let elapsed = frame_start.elapsed();
         if elapsed < target_frame_time {
             thread::sleep(target_frame_time - elapsed);
         }
     }
-
-    cleanup()?;
 
     // Save to CSV
     let args: Vec<String> = env::args().collect();
@@ -121,11 +109,5 @@ fn main() -> Result<(), Box<dyn Error>> {
     wtr.flush()?;
 
     println!("Done.");
-    Ok(())
-}
-
-fn cleanup() -> Result<(), Box<dyn Error>> {
-    disable_raw_mode()?;
-    stdout().execute(crossterm::cursor::Show)?;
     Ok(())
 }

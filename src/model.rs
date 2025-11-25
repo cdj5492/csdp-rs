@@ -77,7 +77,7 @@ impl Model {
         // final layer. Connects to all hidden layers
         let output_layer = LIFLayer::new(
             // sum of all hidden layer sizes
-            layer_sizes.iter().skip(1).rev().skip(1).sum::<usize>(),
+            layer_sizes.last().copied()?,
             tau_lif,
             g_thr,
             thresh_lambda,
@@ -152,17 +152,17 @@ impl Model {
         }
 
         // output layer connections from all hidden layers
-        // for (i, layer) in self.hidden_layers.iter().enumerate() {
-        //     let pre_activity = layer.output()?;
-        //     let post_activity = self.output_synapses[i].forward(pre_activity)?;
-        //     self.output_layer.add_input(&post_activity)?;
-        // }
-        let mut all_hidden_outputs = Vec::new();
-        for layer in self.hidden_layers.iter() {
-            all_hidden_outputs.push(layer.output()?.clone());
+        for (i, layer) in self.hidden_layers.iter().enumerate() {
+            let pre_activity = layer.output()?;
+            let post_activity = self.output_synapses[i].forward(pre_activity)?;
+            self.output_layer.add_input(&post_activity)?;
         }
-        let output_layer_input = Tensor::cat(&all_hidden_outputs, 0)?;
-        self.output_layer.add_input(&output_layer_input)?;
+        // let mut all_hidden_outputs = Vec::new();
+        // for layer in self.hidden_layers.iter() {
+        //     all_hidden_outputs.push(layer.output()?.clone());
+        // }
+        // let output_layer_input = Tensor::cat(&all_hidden_outputs, 0)?;
+        // self.output_layer.add_input(&output_layer_input)?;
 
         // step all hidden layers
         for layer in self.hidden_layers.iter_mut() {
@@ -200,12 +200,11 @@ impl Model {
             self.step(&input)?;
 
             if collect_data {
-                // inspection test
                 let output = self.output_layer.output()?;
                 out.output_activity.push(output.clone());
             }
         }
-        out.final_output = self.hidden_layers.last().unwrap().output()?.clone();
+        out.final_output = self.output_layer.output()?.clone();
         Ok(out)
     }
 }

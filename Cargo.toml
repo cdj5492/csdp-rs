@@ -13,6 +13,10 @@ path = "src/tools/collect_training_data.rs"
 name = "playback_data"
 path = "src/tools/playback_training_data.rs"
 
+[[bin]]
+name = "teleoperate"
+path = "src/tools/teleoperate.rs"
+
 [dependencies]
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.2-alpha.1", features = [
   "cuda",
