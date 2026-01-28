@@ -9,6 +9,7 @@ pub trait Layer: Send + Sync {
     fn step(&mut self, dt: f32) -> CandleResult<()>;
 
     /// internal activity getter
+    #[allow(dead_code)]
     fn activity(&self) -> CandleResult<&Tensor>;
 
     /// output getter
@@ -25,4 +26,22 @@ pub trait Layer: Send + Sync {
 
     /// resets internal state fully
     fn reset(&mut self) -> CandleResult<()>;
+}
+
+/// Position of a layer in visualization space
+#[derive(Debug, Clone, Copy)]
+pub struct LayerPosition {
+    pub x: f32,
+    pub y: f32,
+}
+
+/// Metadata about a layer for visualization and configuration
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct LayerMetadata {
+    pub id: usize,
+    pub name: String,
+    pub layer_type: String,
+    pub size: usize,
+    pub position: LayerPosition,
 }

@@ -1,6 +1,7 @@
 use crate::layer::Layer;
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct LIFLayer {
     /// input currents
     inputs: Tensor,
