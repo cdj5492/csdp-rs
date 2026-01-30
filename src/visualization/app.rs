@@ -19,14 +19,21 @@ impl NeuralNetworkVisualizerApp {
         }
     }
 
-    fn draw_stats_panel(&mut self, ui: &mut egui::Ui, stats: &RuntimeStats, total_epochs: usize, is_paused: bool) {
+    fn draw_stats_panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        stats: &RuntimeStats,
+        total_epochs: usize,
+        is_paused: bool,
+    ) {
         ui.horizontal(|ui| {
             // Pause/Resume button
             let button_text = if is_paused { "▶ Resume" } else { "⏸ Pause" };
             if ui.button(button_text).clicked()
-                && let Ok(mut state) = self.vis_state.try_lock() {
-                    state.is_paused = !state.is_paused;
-                }
+                && let Ok(mut state) = self.vis_state.try_lock()
+            {
+                state.is_paused = !state.is_paused;
+            }
 
             ui.separator();
             ui.label(format!("Epoch: {}/{}", stats.epoch, total_epochs));
@@ -46,14 +53,20 @@ impl NeuralNetworkVisualizerApp {
             0.0
         };
 
-        ui.add(egui::ProgressBar::new(progress)
-            .show_percentage()
-            .text(format!("Training Progress: {:.1}%", progress * 100.0)));
+        ui.add(
+            egui::ProgressBar::new(progress)
+                .show_percentage()
+                .text(format!("Training Progress: {:.1}%", progress * 100.0)),
+        );
     }
 
     fn draw_network(&mut self, ui: &mut egui::Ui, model: &ModelStructure) {
         // Debug: Show layer count and info
-        ui.label(format!("Layers: {}, Synapses: {}", model.layers.len(), model.synapses.len()));
+        ui.label(format!(
+            "Layers: {}, Synapses: {}",
+            model.layers.len(),
+            model.synapses.len()
+        ));
 
         let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
@@ -79,14 +92,10 @@ impl NeuralNetworkVisualizerApp {
                 model.layers.iter().find(|l| l.id == synapse.pre_layer),
                 model.layers.iter().find(|l| l.id == synapse.post_layer),
             ) {
-                let pre_pos = to_screen.transform_pos(Pos2::new(
-                    pre_layer.position.x,
-                    pre_layer.position.y,
-                ));
-                let post_pos = to_screen.transform_pos(Pos2::new(
-                    post_layer.position.x,
-                    post_layer.position.y,
-                ));
+                let pre_pos =
+                    to_screen.transform_pos(Pos2::new(pre_layer.position.x, pre_layer.position.y));
+                let post_pos = to_screen
+                    .transform_pos(Pos2::new(post_layer.position.x, post_layer.position.y));
 
                 // Line thickness based on mean weight
                 let thickness = (synapse.weight_stats.mean.abs() * 2.0).clamp(0.5, 5.0);
@@ -126,9 +135,12 @@ impl NeuralNetworkVisualizerApp {
         static mut DEBUG_PRINTED: bool = false;
         unsafe {
             if !DEBUG_PRINTED {
-                eprintln!("Drawing layer '{}' at world ({}, {}) -> screen ({}, {})",
-                    layer.name, world_pos.x, world_pos.y, pos.x, pos.y);
-                if layer.id == 3 { // Print only first 4 layers
+                eprintln!(
+                    "Drawing layer '{}' at world ({}, {}) -> screen ({}, {})",
+                    layer.name, world_pos.x, world_pos.y, pos.x, pos.y
+                );
+                if layer.id == 3 {
+                    // Print only first 4 layers
                     DEBUG_PRINTED = true;
                 }
             }
@@ -164,35 +176,34 @@ impl NeuralNetworkVisualizerApp {
         );
 
         // Click detection (larger hit area)
-        let click_radius = base_size * 2.0;
+        let click_radius = base_size;
         let rect = Rect::from_center_size(pos, Vec2::splat(click_radius * 2.0));
 
         if response.clicked()
             && let Some(click_pos) = response.interact_pointer_pos()
-                && rect.contains(click_pos) {
-                    self.neuron_selector_open = Some(layer.id);
-                    self.neuron_input_text.clear();
-                }
+            && rect.contains(click_pos)
+        {
+            self.neuron_selector_open = Some(layer.id);
+            self.neuron_input_text.clear();
+        }
 
         // Hover tooltip
         if response.hovered()
             && let Some(hover_pos) = response.hover_pos()
-                && rect.contains(hover_pos) {
-                    egui::Area::new(egui::Id::new(format!("layer_tooltip_{}", layer.id)))
-                        .fixed_pos(hover_pos + Vec2::new(10.0, 10.0))
-                        .show(&response.ctx, |ui| {
-                            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                ui.label(format!("Layer: {}", layer.name));
-                                ui.label(format!("Type: {}", layer.layer_type));
-                                ui.label(format!("Size: {} neurons", layer.size));
-                                ui.label(format!("Active: {} neurons", layer.spike_count));
-                                ui.label(format!(
-                                    "Activity: {:.1}%",
-                                    activity_ratio * 100.0
-                                ));
-                            });
-                        });
-                }
+            && rect.contains(hover_pos)
+        {
+            egui::Area::new(egui::Id::new(format!("layer_tooltip_{}", layer.id)))
+                .fixed_pos(hover_pos + Vec2::new(10.0, 10.0))
+                .show(&response.ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.label(format!("Layer: {}", layer.name));
+                        ui.label(format!("Type: {}", layer.layer_type));
+                        ui.label(format!("Size: {} neurons", layer.size));
+                        ui.label(format!("Active: {} neurons", layer.spike_count));
+                        ui.label(format!("Activity: {:.1}%", activity_ratio * 100.0));
+                    });
+                });
+        }
     }
 
     fn draw_layer_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
@@ -266,22 +277,26 @@ impl NeuralNetworkVisualizerApp {
                     layer.name, layer.size
                 ));
                 ui.horizontal(|ui| {
-                    ui.label(format!("Neuron index (0-{}):", layer.size.saturating_sub(1)));
+                    ui.label(format!(
+                        "Neuron index (0-{}):",
+                        layer.size.saturating_sub(1)
+                    ));
                     ui.text_edit_singleline(&mut self.neuron_input_text);
                 });
 
                 ui.horizontal(|ui| {
                     if ui.button("Add").clicked()
-                        && let Ok(idx) = self.neuron_input_text.parse::<usize>() {
-                            if idx < layer.size {
-                                if let Ok(mut state) = self.vis_state.try_lock() {
-                                    state.neuron_traces.add_neuron(layer.id, idx, &layer.name);
-                                }
-                                self.neuron_selector_open = None;
-                            } else {
-                                // Show error - index out of bounds
+                        && let Ok(idx) = self.neuron_input_text.parse::<usize>()
+                    {
+                        if idx < layer.size {
+                            if let Ok(mut state) = self.vis_state.try_lock() {
+                                state.neuron_traces.add_neuron(layer.id, idx, &layer.name);
                             }
+                            self.neuron_selector_open = None;
+                        } else {
+                            // Show error - index out of bounds
                         }
+                    }
 
                     if ui.button("Cancel").clicked() {
                         self.neuron_selector_open = None;
@@ -341,9 +356,10 @@ impl eframe::App for NeuralNetworkVisualizerApp {
                     ui.horizontal(|ui| {
                         ui.heading("Neuron Spike Traces");
                         if ui.button("Clear All").clicked()
-                            && let Ok(mut state) = vis_state_clone.try_lock() {
-                                state.neuron_traces.clear();
-                            }
+                            && let Ok(mut state) = vis_state_clone.try_lock()
+                        {
+                            state.neuron_traces.clear();
+                        }
                     });
 
                     if tracked_neurons.is_empty() {
@@ -390,8 +406,9 @@ impl eframe::App for NeuralNetworkVisualizerApp {
 
         // Show neuron selector modal if open
         if let Some(layer_id) = self.neuron_selector_open
-            && let Some(layer) = model_structure.layers.iter().find(|l| l.id == layer_id) {
-                self.show_neuron_selector(ctx, layer);
-            }
+            && let Some(layer) = model_structure.layers.iter().find(|l| l.id == layer_id)
+        {
+            self.show_neuron_selector(ctx, layer);
+        }
     }
 }

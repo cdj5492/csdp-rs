@@ -37,7 +37,6 @@ pub struct SynapseConfig {
     pub pre_layer: usize,
     pub post_layer: usize,
     pub synapse_type: SynapseType,
-    pub bidirectional: bool,
 }
 
 /// Types of synapses available
@@ -56,7 +55,7 @@ pub struct Model {
     pub device: Device,
 }
 
-/// Legacy Model structure (kept for reference, can be removed later)
+/// Legacy Model structure (kept for reference, can be removed)
 pub struct _OldModel {
     pub input_layer: BernoulliLayer,
     pub hidden_layers: Vec<LIFLayer>,
@@ -131,7 +130,6 @@ impl Model {
             pre_layer: 0,
             post_layer: 1,
             synapse_type: SynapseType::CSDP,
-            bidirectional: false,
         });
 
         // Hidden layers with bidirectional connections
@@ -140,7 +138,11 @@ impl Model {
                 pre_layer: i,
                 post_layer: i + 1,
                 synapse_type: SynapseType::CSDP,
-                bidirectional: true,
+            });
+            synapse_configs.push(SynapseConfig {
+                pre_layer: i + 1,
+                post_layer: i,
+                synapse_type: SynapseType::CSDP,
             });
         }
 
@@ -150,7 +152,6 @@ impl Model {
                 pre_layer: i,
                 post_layer: layer_configs.len() - 1,
                 synapse_type: SynapseType::CSDP,
-                bidirectional: false,
             });
         }
 
@@ -177,9 +178,8 @@ impl Model {
 
         // Create synapses
         let mut synapses = vec![];
-        let mut synapse_id = 0;
 
-        for syn_config in config.synapse_configs.iter() {
+        for (synapse_id, syn_config) in config.synapse_configs.iter().enumerate() {
             let pre_size = layers[syn_config.pre_layer].size();
             let post_size = layers[syn_config.post_layer].size();
 
@@ -194,22 +194,6 @@ impl Model {
                 is_learning: true,
             };
             synapses.push(SynapseConnection { metadata, synapse });
-            synapse_id += 1;
-
-            // Backward synapse if bidirectional
-            if syn_config.bidirectional {
-                let synapse =
-                    Self::create_synapse(syn_config.synapse_type, post_size, pre_size, device)?;
-                let metadata = SynapseMetadata {
-                    id: synapse_id,
-                    pre_layer: syn_config.post_layer,
-                    post_layer: syn_config.pre_layer,
-                    synapse_type: format!("{:?}", syn_config.synapse_type),
-                    is_learning: true,
-                };
-                synapses.push(SynapseConnection { metadata, synapse });
-                synapse_id += 1;
-            }
         }
 
         Ok(Self {

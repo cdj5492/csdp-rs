@@ -129,7 +129,7 @@ impl VisualizationState {
             runtime_stats: RuntimeStats::default(),
             neuron_traces: NeuronTraceManager::new(1000),
             should_close: false,
-            is_paused: false,
+            is_paused: true,
             total_epochs,
         }
     }
