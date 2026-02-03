@@ -140,50 +140,51 @@ fn main() -> Result<(), Box<dyn Error>> {
                 model.step(input)?;
 
                 // Update tracked neuron histories
-                if let Some((_, ref vis_state)) = vis_handle {
-                    if let Ok(mut state) = vis_state.try_lock() {
-                        let global_timestep = iteration * 40 + t;
-                        let max_history = state.neuron_traces.max_history;
+                if let Some((_, ref vis_state)) = vis_handle
+                    && let Ok(mut state) = vis_state.try_lock()
+                {
+                    let global_timestep = iteration * 40 + t;
+                    let max_history = state.neuron_traces.max_history;
 
-                        // Clone tracked neurons list to avoid borrow issues
-                        let tracked_list: Vec<_> = state
-                            .neuron_traces
-                            .tracked_neurons
-                            .iter()
-                            .map(|n| (n.layer_id, n.neuron_idx))
-                            .collect();
+                    // Clone tracked neurons list to avoid borrow issues
+                    let tracked_list: Vec<_> = state
+                        .neuron_traces
+                        .tracked_neurons
+                        .iter()
+                        .map(|n| (n.layer_id, n.neuron_idx))
+                        .collect();
 
-                        for (layer_id, neuron_idx) in tracked_list {
-                            match model.get_neuron_output(layer_id, neuron_idx) {
-                                Ok(spike) => {
-                                    // Find the neuron and update it
-                                    if let Some(neuron) =
-                                        state.neuron_traces.tracked_neurons.iter_mut().find(|n| {
-                                            n.layer_id == layer_id && n.neuron_idx == neuron_idx
-                                        })
-                                    {
-                                        neuron.add_spike(spike, global_timestep, max_history);
-                                    }
+                    for (layer_id, neuron_idx) in tracked_list {
+                        match model.get_neuron_output(layer_id, neuron_idx) {
+                            Ok(spike) => {
+                                // Find the neuron and update it
+                                if let Some(neuron) =
+                                    state.neuron_traces.tracked_neurons.iter_mut().find(|n| {
+                                        n.layer_id == layer_id && n.neuron_idx == neuron_idx
+                                    })
+                                {
+                                    neuron.add_spike(spike, global_timestep, max_history);
                                 }
-                                Err(e) => {
-                                    // Only print errors occasionally to avoid spam
-                                    static mut ERROR_COUNT: usize = 0;
-                                    unsafe {
-                                        ERROR_COUNT += 1;
-                                        if ERROR_COUNT == 1 {
-                                            eprintln!(
-                                                "Warning: Failed to get neuron output for layer {}, neuron {}: {}",
-                                                layer_id, neuron_idx, e
-                                            );
-                                            eprintln!("(Further errors will be suppressed)");
-                                        }
+                            }
+                            Err(e) => {
+                                // Only print errors occasionally to avoid spam
+                                static mut ERROR_COUNT: usize = 0;
+                                unsafe {
+                                    ERROR_COUNT += 1;
+                                    if ERROR_COUNT == 1 {
+                                        eprintln!(
+                                            "Warning: Failed to get neuron output for layer {}, neuron {}: {}",
+                                            layer_id, neuron_idx, e
+                                        );
+                                        eprintln!("(Further errors will be suppressed)");
                                     }
                                 }
                             }
                         }
-                    } // end if let Ok(mut state)
-                    // Lock failed - skip this timestep (happens occasionally, normal behavior)
-                } // end if let Some
+                    }
+                } // end if let Ok(mut state)
+                // Lock failed - skip this timestep (happens occasionally, normal behavior)
+                // end if let Some
             } // end for t in 0..40
 
             // Update visualization snapshot every 10 iterations

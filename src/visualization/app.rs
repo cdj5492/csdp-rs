@@ -278,7 +278,7 @@ impl NeuralNetworkVisualizerApp {
         for synapse in &model.synapses {
             let key = (synapse.pre_layer.min(synapse.post_layer),
                       synapse.pre_layer.max(synapse.post_layer));
-            synapse_pairs.entry(key).or_insert_with(Vec::new).push(synapse);
+            synapse_pairs.entry(key).or_default().push(synapse);
         }
 
         // Draw synapses first (so they appear behind layers)
