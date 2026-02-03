@@ -36,3 +36,9 @@ eframe = "0.31"
 egui = "0.31"
 egui_plot = "0.31"
 winit = "0.30"
+
+# webcam
+[dependencies.nokhwa]
+version = "0.10"
+# Use the native input backends, enable WGPU integration
+features = ["input-native", "output-wgpu"]

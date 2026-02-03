@@ -242,9 +242,10 @@ impl Model {
         };
 
         // Calculate position based on layer index
+        // Use a simple hash-like function to scatter positions in 2D
         let position = LayerPosition {
-            x: id as f32 * 150.0 + 50.0,
-            y: 200.0,
+            x: 200.0 + (id as f32 * 137.5).sin() * 200.0 + id as f32 * 50.0,
+            y: 200.0 + (id as f32 * 173.3).cos() * 100.0,
         };
 
         let metadata = LayerMetadata {
@@ -372,7 +373,14 @@ impl Model {
         }
 
         let output = self.layers[layer_id].output()?;
-        let output_vec = output.to_vec1::<f32>()?;
+
+        // Handle both 1D [N] and 2D [N, 1] tensors
+        let output_vec = if output.dims().len() == 1 {
+            output.to_vec1::<f32>()?
+        } else {
+            // Flatten 2D tensor to 1D
+            output.flatten(0, output.dims().len() - 1)?.to_vec1::<f32>()?
+        };
 
         if neuron_idx >= output_vec.len() {
             return Err(candle_core::Error::Msg(format!(
@@ -403,6 +411,7 @@ impl Model {
                 layer_type: self.layer_metadata[i].layer_type.clone(),
                 size: layer.size(),
                 position: self.layer_metadata[i].position,
+                velocity: (0.0, 0.0),
                 current_activity: output_vec,
                 spike_count,
             };

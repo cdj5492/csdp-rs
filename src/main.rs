@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("No physical leader robot connected");
     }
 
-    let n_epochs = 100;
+    let n_epochs = 1000;
     let dt = 0.1;
     let visualize = parse_args();
 
@@ -85,16 +85,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Initialize model structure
         if let Ok(mut state) = vis_state.lock() {
-            let thing = model.get_visualization_snapshot();
-            println!("{:?}", thing);
-            // if let Ok(snapshot) = model.get_visualization_snapshot() {
-            if let Ok(snapshot) = thing {
+            if let Ok(snapshot) = model.get_visualization_snapshot() {
                 println!(
                     "Initial snapshot: {} layers, {} synapses",
                     snapshot.layers.len(),
                     snapshot.synapses.len()
                 );
-                state.model_structure = snapshot;
+                state.update_from_snapshot(snapshot);
             } else {
                 println!("Warning: Failed to get initial visualization snapshot");
             }
@@ -143,44 +140,60 @@ fn main() -> Result<(), Box<dyn Error>> {
                 model.step(input)?;
 
                 // Update tracked neuron histories
-                if let Some((_, ref vis_state)) = vis_handle
-                    && let Ok(mut state) = vis_state.try_lock()
-                {
-                    let global_timestep = iteration * 40 + t;
-                    let max_history = state.neuron_traces.max_history;
+                if let Some((_, ref vis_state)) = vis_handle {
+                    if let Ok(mut state) = vis_state.try_lock() {
+                        let global_timestep = iteration * 40 + t;
+                        let max_history = state.neuron_traces.max_history;
 
-                    // Clone tracked neurons list to avoid borrow issues
-                    let tracked_list: Vec<_> = state
-                        .neuron_traces
-                        .tracked_neurons
-                        .iter()
-                        .map(|n| (n.layer_id, n.neuron_idx))
-                        .collect();
+                        // Clone tracked neurons list to avoid borrow issues
+                        let tracked_list: Vec<_> = state
+                            .neuron_traces
+                            .tracked_neurons
+                            .iter()
+                            .map(|n| (n.layer_id, n.neuron_idx))
+                            .collect();
 
-                    for (layer_id, neuron_idx) in tracked_list {
-                        if let Ok(spike) = model.get_neuron_output(layer_id, neuron_idx) {
-                            // Find the neuron and update it
-                            if let Some(neuron) = state
-                                .neuron_traces
-                                .tracked_neurons
-                                .iter_mut()
-                                .find(|n| n.layer_id == layer_id && n.neuron_idx == neuron_idx)
-                            {
-                                neuron.add_spike(spike, global_timestep, max_history);
+                        for (layer_id, neuron_idx) in tracked_list {
+                            match model.get_neuron_output(layer_id, neuron_idx) {
+                                Ok(spike) => {
+                                    // Find the neuron and update it
+                                    if let Some(neuron) =
+                                        state.neuron_traces.tracked_neurons.iter_mut().find(|n| {
+                                            n.layer_id == layer_id && n.neuron_idx == neuron_idx
+                                        })
+                                    {
+                                        neuron.add_spike(spike, global_timestep, max_history);
+                                    }
+                                }
+                                Err(e) => {
+                                    // Only print errors occasionally to avoid spam
+                                    static mut ERROR_COUNT: usize = 0;
+                                    unsafe {
+                                        ERROR_COUNT += 1;
+                                        if ERROR_COUNT == 1 {
+                                            eprintln!(
+                                                "Warning: Failed to get neuron output for layer {}, neuron {}: {}",
+                                                layer_id, neuron_idx, e
+                                            );
+                                            eprintln!("(Further errors will be suppressed)");
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-            }
+                    } // end if let Ok(mut state)
+                    // Lock failed - skip this timestep (happens occasionally, normal behavior)
+                } // end if let Some
+            } // end for t in 0..40
 
             // Update visualization snapshot every 10 iterations
             if let Some((_, ref vis_state)) = vis_handle
                 && iteration % 10 == 0
                 && let Ok(mut state) = vis_state.try_lock()
             {
-                // Update model structure
+                // Update model structure (preserving animated positions)
                 if let Ok(snapshot) = model.get_visualization_snapshot() {
-                    state.model_structure = snapshot;
+                    state.update_from_snapshot(snapshot);
                 }
 
                 // Update runtime stats

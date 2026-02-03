@@ -13,6 +13,7 @@ pub struct VisualizationState {
     pub should_close: bool,
     pub is_paused: bool,
     pub total_epochs: usize,
+    pub positions_initialized: bool,
 }
 
 /// Structure of the model for visualization
@@ -31,6 +32,7 @@ pub struct LayerVisInfo {
     pub layer_type: String,
     pub size: usize,
     pub position: LayerPosition,
+    pub velocity: (f32, f32), // For force-directed layout
     pub current_activity: Vec<f32>,
     pub spike_count: usize,
 }
@@ -129,8 +131,9 @@ impl VisualizationState {
             runtime_stats: RuntimeStats::default(),
             neuron_traces: NeuronTraceManager::new(1000),
             should_close: false,
-            is_paused: true,
+            is_paused: false, // Start unpaused so data begins collecting immediately
             total_epochs,
+            positions_initialized: false,
         }
     }
 }
@@ -138,6 +141,47 @@ impl VisualizationState {
 impl Default for VisualizationState {
     fn default() -> Self {
         Self::new(1000)
+    }
+}
+
+impl VisualizationState {
+    /// Update model structure from snapshot, preserving animated positions
+    pub fn update_from_snapshot(&mut self, snapshot: ModelStructure) {
+        // If positions haven't been initialized yet, just use the snapshot as-is
+        if !self.positions_initialized {
+            self.model_structure = snapshot;
+            self.positions_initialized = true;
+            return;
+        }
+
+        // Update activity and spike counts, but preserve animated positions
+        for new_layer in &snapshot.layers {
+            if let Some(existing_layer) = self
+                .model_structure
+                .layers
+                .iter_mut()
+                .find(|l| l.id == new_layer.id)
+            {
+                // Update activity data but keep position and velocity
+                existing_layer.name = new_layer.name.clone();
+                existing_layer.layer_type = new_layer.layer_type.clone();
+                existing_layer.size = new_layer.size;
+                existing_layer.current_activity = new_layer.current_activity.clone();
+                existing_layer.spike_count = new_layer.spike_count;
+                // Position and velocity are preserved
+            } else {
+                // New layer - add it (clone since we're iterating by reference)
+                self.model_structure.layers.push(new_layer.clone());
+            }
+        }
+
+        // Remove layers that no longer exist
+        self.model_structure
+            .layers
+            .retain(|l| snapshot.layers.iter().any(|nl| nl.id == l.id));
+
+        // Update synapses completely (they don't have animated state)
+        self.model_structure.synapses = snapshot.synapses;
     }
 }
 
