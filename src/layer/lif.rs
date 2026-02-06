@@ -36,7 +36,7 @@ impl LIFLayer {
             mod_signal: ModSignal::new(
                 size,
                 trace_tau,
-                1.0,
+                max_z,
                 (size as f32) * max_z * max_z / 2.0,
                 device,
             )?,

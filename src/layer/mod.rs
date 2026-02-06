@@ -28,8 +28,9 @@ fn calc_loss_ce(z: &Tensor, lab: &Tensor, thr: f32) -> CandleResult<Tensor> {
         -logit as f64,
         ((1.0 + (-logit.abs()).exp()).log10() + logit.max(0.0)) as f64,
     )?;
-    let l = cross_entropy.sum_keepdim(0)?;
-    Ok(l)
+    Ok(cross_entropy)
+    // let l = cross_entropy.sum_keepdim(0)?;
+    // Ok(l)
 }
 
 /// used in calculating the modulatory signal dC/dz
@@ -62,10 +63,10 @@ impl ModSignal {
             omega,
             z: Tensor::zeros((size, 1), DType::F32, device)?,
             dz: Tensor::zeros((size, 1), DType::F32, device)?,
-            prev_loss: Tensor::zeros((1, 1), DType::F32, device)?,
+            prev_loss: Tensor::zeros((size, 1), DType::F32, device)?,
         })
     }
-    /// dC/dz
+    /// dC/dz_i
     fn calc_mod_signal(&mut self, spikes: &Tensor, lab: &Tensor, dt: f32) -> CandleResult<Tensor> {
         self.dz =
             (((dt / self.trace_tau) as f64) * (((self.max_z as f64) * spikes)?.sub(&self.z)?))?;
@@ -74,7 +75,9 @@ impl ModSignal {
         let dl = l.sub(&self.prev_loss)?;
         self.prev_loss = l;
         let dz_ep = (&self.dz + 0.00001)?;
-        dl.repeat((self.z.dims()[0], 1))?.div(&dz_ep)
+        // dl.repeat((self.z.dims()[0], 1))?.div(&dz_ep)
+        // basic 2 point derivative
+        dl.div(&dz_ep)
     }
 }
 

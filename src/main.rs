@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("No physical leader robot connected");
     }
 
-    let n_epochs = 1000;
+    let n_epochs = 100;
     let dt = 0.1;
     let visualize = parse_args();
 

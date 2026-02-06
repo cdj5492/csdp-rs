@@ -14,6 +14,7 @@ pub struct NeuralNetworkVisualizerApp {
     spike_history: Vec<Vec<f32>>,
     raster_texture: Option<egui::TextureHandle>,
     displayed_epoch: usize,
+    zoom: f32,
 }
 
 impl NeuralNetworkVisualizerApp {
@@ -29,6 +30,7 @@ impl NeuralNetworkVisualizerApp {
             spike_history: Vec::new(),
             raster_texture: None,
             displayed_epoch: 0,
+            zoom: 1.0,
         }
     }
 
@@ -475,8 +477,15 @@ impl NeuralNetworkVisualizerApp {
                          displayed_height *= scale;
                     }
 
+                    let displayed_size = Vec2::new(displayed_width, displayed_height) * self.zoom;
+                    let response = ui.image((texture.id(), displayed_size));
 
-                    ui.image((texture.id(), Vec2::new(displayed_width, displayed_height)));
+                    if response.hovered() {
+                        let scroll = ui.input(|i| i.raw_scroll_delta);
+                        if scroll.y != 0.0 {
+                            self.zoom = (self.zoom + scroll.y * 0.01 * self.zoom).max(0.1);
+                        }
+                    }
                 });
 
             } else {
