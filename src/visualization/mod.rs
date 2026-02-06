@@ -2,18 +2,18 @@ pub mod app;
 
 use crate::layer::LayerPosition;
 use crate::synapse::{LayerId, SynapseId, WeightStats};
-use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 /// State shared between training loop and visualization thread
 pub struct VisualizationState {
     pub model_structure: ModelStructure,
     pub runtime_stats: RuntimeStats,
-    pub neuron_traces: NeuronTraceManager,
     pub should_close: bool,
     pub is_paused: bool,
     pub total_epochs: usize,
     pub positions_initialized: bool,
+    pub selected_layer_id: Option<LayerId>,
+    pub epoch_spike_history: Option<(usize, Vec<Vec<f32>>)>,
 }
 
 /// Structure of the model for visualization
@@ -57,70 +57,6 @@ pub struct RuntimeStats {
     pub iterations_per_second: f32,
 }
 
-/// Manager for tracked neuron spike traces
-pub struct NeuronTraceManager {
-    pub tracked_neurons: Vec<TrackedNeuron>,
-    pub max_history: usize,
-}
-
-/// A tracked neuron with its spike history
-#[derive(Clone)]
-pub struct TrackedNeuron {
-    pub layer_id: LayerId,
-    pub neuron_idx: usize,
-    pub spike_history: VecDeque<f32>,
-    pub timesteps: VecDeque<usize>,
-    pub display_name: String,
-}
-
-impl TrackedNeuron {
-    pub fn new(layer_id: LayerId, neuron_idx: usize, layer_name: &str) -> Self {
-        Self {
-            layer_id,
-            neuron_idx,
-            spike_history: VecDeque::new(),
-            timesteps: VecDeque::new(),
-            display_name: format!("{}[{}]", layer_name, neuron_idx),
-        }
-    }
-
-    pub fn add_spike(&mut self, spike_value: f32, timestep: usize, max_history: usize) {
-        self.spike_history.push_back(spike_value);
-        self.timesteps.push_back(timestep);
-
-        // Maintain max history size
-        while self.spike_history.len() > max_history {
-            self.spike_history.pop_front();
-            self.timesteps.pop_front();
-        }
-    }
-}
-
-impl NeuronTraceManager {
-    pub fn new(max_history: usize) -> Self {
-        Self {
-            tracked_neurons: Vec::new(),
-            max_history,
-        }
-    }
-
-    pub fn add_neuron(&mut self, layer_id: LayerId, neuron_idx: usize, layer_name: &str) {
-        // Check if already tracking this neuron
-        for neuron in &self.tracked_neurons {
-            if neuron.layer_id == layer_id && neuron.neuron_idx == neuron_idx {
-                return; // Already tracking
-            }
-        }
-
-        let tracked = TrackedNeuron::new(layer_id, neuron_idx, layer_name);
-        self.tracked_neurons.push(tracked);
-    }
-
-    pub fn clear(&mut self) {
-        self.tracked_neurons.clear();
-    }
-}
-
 impl VisualizationState {
     pub fn new(total_epochs: usize) -> Self {
         Self {
@@ -129,11 +65,12 @@ impl VisualizationState {
                 synapses: Vec::new(),
             },
             runtime_stats: RuntimeStats::default(),
-            neuron_traces: NeuronTraceManager::new(1000),
             should_close: false,
             is_paused: true, // Start unpaused so data begins collecting immediately
             total_epochs,
             positions_initialized: false,
+            selected_layer_id: None,
+            epoch_spike_history: None,
         }
     }
 }

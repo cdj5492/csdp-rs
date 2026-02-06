@@ -115,6 +115,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     for epoch in epoch_iter {
+        let mut epoch_spike_history: Option<Vec<Vec<f32>>> = None;
+        if let Some((_, ref vis_state)) = vis_handle {
+            if let Ok(state) = vis_state.lock() {
+                if state.selected_layer_id.is_some() && epoch % 5 == 0 {
+                    epoch_spike_history = Some(Vec::new());
+                }
+            }
+        }
+
         for (input, _label) in ds.iter() {
             // Check for pause state
             if let Some((_, ref vis_state)) = vis_handle {
@@ -136,48 +145,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             iteration += 1;
 
             // Run one processing cycle (40 timesteps)
-            for t in 0..40 {
+            for _t in 0..40 {
                 model.step(input)?;
 
-                // Update tracked neuron histories
-                if let Some((_, ref vis_state)) = vis_handle
-                    && let Ok(mut state) = vis_state.try_lock()
-                {
-                    let global_timestep = iteration * 40 + t;
-                    let max_history = state.neuron_traces.max_history;
-
-                    // Clone tracked neurons list to avoid borrow issues
-                    let tracked_list: Vec<_> = state
-                        .neuron_traces
-                        .tracked_neurons
-                        .iter()
-                        .map(|n| (n.layer_id, n.neuron_idx))
-                        .collect();
-
-                    for (layer_id, neuron_idx) in tracked_list {
-                        match model.get_neuron_output(layer_id, neuron_idx) {
-                            Ok(spike) => {
-                                // Find the neuron and update it
-                                if let Some(neuron) =
-                                    state.neuron_traces.tracked_neurons.iter_mut().find(|n| {
-                                        n.layer_id == layer_id && n.neuron_idx == neuron_idx
-                                    })
-                                {
-                                    neuron.add_spike(spike, global_timestep, max_history);
-                                }
-                            }
-                            Err(e) => {
-                                // Only print errors occasionally to avoid spam
-                                static mut ERROR_COUNT: usize = 0;
-                                unsafe {
-                                    ERROR_COUNT += 1;
-                                    if ERROR_COUNT == 1 {
-                                        eprintln!(
-                                            "Warning: Failed to get neuron output for layer {}, neuron {}: {}",
-                                            layer_id, neuron_idx, e
-                                        );
-                                        eprintln!("(Further errors will be suppressed)");
-                                    }
+                if let Some(history) = epoch_spike_history.as_mut() {
+                    if let Some((_, ref vis_state)) = vis_handle {
+                        if let Ok(state) = vis_state.lock() {
+                            if let Some(layer_id) = state.selected_layer_id {
+                                if let Ok(activity) = model.get_layer_activity(layer_id) {
+                                    history.push(activity);
                                 }
                             }
                         }
@@ -222,6 +198,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                     input.to_device(&cpu),
                     out.final_output.to_device(&cpu)?
                 );
+            }
+        }
+
+        if let Some(history) = epoch_spike_history {
+            if let Some((_, ref vis_state)) = vis_handle {
+                if let Ok(mut state) = vis_state.lock() {
+                    state.epoch_spike_history = Some((epoch, history));
+                }
             }
         }
     }

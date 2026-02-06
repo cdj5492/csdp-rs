@@ -445,4 +445,16 @@ impl Model {
             synapses: synapse_vis_infos,
         })
     }
+
+    pub fn get_layer_activity(&self, layer_id: LayerId) -> CandleResult<Vec<f32>> {
+        if layer_id >= self.layers.len() {
+            return Err(candle_core::Error::Msg(format!(
+                "Layer {} does not exist",
+                layer_id
+            )));
+        }
+        let output = self.layers[layer_id].output()?;
+        let output_vec = output.flatten_all()?.to_vec1::<f32>()?;
+        Ok(output_vec)
+    }
 }

@@ -69,7 +69,7 @@ impl Layer for LIFLayer {
                 .to_scalar::<f32>()?
                 - 1.0);
 
-        println!("thresh: {}", self.thresh);
+        // println!("thresh: {}", self.thresh);
 
         Ok(())
     }
