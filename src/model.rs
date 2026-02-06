@@ -304,7 +304,7 @@ impl Model {
             // Get pre-synaptic activity
             let pre_activity = self.layers[pre_layer_id].output()?.clone();
 
-            // Forward pass
+            // Forward
             let post_input = syn_conn.synapse.forward(&pre_activity)?;
 
             // Add to post-synaptic layer input
@@ -312,10 +312,13 @@ impl Model {
 
             // Update weights if learning is enabled
             if self.is_learning && syn_conn.metadata.is_learning {
-                let post_activity = self.layers[post_layer_id].output()?.clone();
-                syn_conn
-                    .synapse
-                    .update_weights(&pre_activity, &post_activity, self.dt)?;
+                // let post_activity = self.layers[post_layer_id].output()?.clone();
+
+                syn_conn.synapse.update_weights(
+                    &pre_activity,
+                    &mut self.layers[post_layer_id],
+                    self.dt,
+                )?;
             }
         }
 
@@ -379,7 +382,9 @@ impl Model {
             output.to_vec1::<f32>()?
         } else {
             // Flatten 2D tensor to 1D
-            output.flatten(0, output.dims().len() - 1)?.to_vec1::<f32>()?
+            output
+                .flatten(0, output.dims().len() - 1)?
+                .to_vec1::<f32>()?
         };
 
         if neuron_idx >= output_vec.len() {

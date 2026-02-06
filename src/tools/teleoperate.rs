@@ -49,19 +49,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Safety: Move Follower to match Leader's current position slowly
     // This prevents the follower from snapping violently if the leader is in a different pose
     println!("Syncing start positions...");
-    if let Ok(start_pos) = leader.get_motor_positions() {
-        if start_pos.len() == 6 {
-            follower.set_goal_positions(&[
-                start_pos[0],
-                start_pos[1],
-                start_pos[2],
-                start_pos[3],
-                start_pos[4],
-                start_pos[5],
-            ])?;
-            // Give it time to move there safely
-            thread::sleep(Duration::from_millis(2000));
-        }
+    if let Ok(start_pos) = leader.get_motor_positions()
+        && start_pos.len() == 6
+    {
+        follower.set_goal_positions(&[
+            start_pos[0],
+            start_pos[1],
+            start_pos[2],
+            start_pos[3],
+            start_pos[4],
+            start_pos[5],
+        ])?;
+        // Give it time to move there safely
+        thread::sleep(Duration::from_millis(2000));
     }
 
     // Blocking wait for Start
@@ -89,19 +89,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         let loop_start = Instant::now();
 
         // Read Leader
-        if let Ok(positions) = leader.get_motor_positions() {
-            if positions.len() == 6 {
-                // Write Follower
-                // We map 1:1, assuming the robots are physically identical or compatible
-                follower.set_goal_positions(&[
-                    positions[0],
-                    positions[1],
-                    positions[2],
-                    positions[3],
-                    positions[4],
-                    positions[5],
-                ])?;
-            }
+        if let Ok(positions) = leader.get_motor_positions()
+            && positions.len() == 6
+        {
+            // Write Follower
+            // We map 1:1, assuming the robots are physically identical or compatible
+            follower.set_goal_positions(&[
+                positions[0],
+                positions[1],
+                positions[2],
+                positions[3],
+                positions[4],
+                positions[5],
+            ])?;
         }
 
         // Maintain Loop Rate

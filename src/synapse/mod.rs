@@ -5,8 +5,13 @@ use candle_core::{Result as CandleResult, Tensor};
 
 #[allow(dead_code)]
 pub trait SynapseUpdate: Send + Sync {
-    fn update(&self, weight: &Tensor, pre: &Tensor, post: &Tensor, dt: f32)
-    -> CandleResult<Tensor>;
+    fn update(
+        &self,
+        weight: &Tensor,
+        pre_layer: &Box<dyn Layer>,
+        post_layer: &Box<dyn Layer>,
+        dt: f32,
+    ) -> CandleResult<Tensor>;
 }
 
 /// New trait for generic synapse operations
@@ -15,7 +20,12 @@ pub trait SynapseOps: Send + Sync {
     fn forward(&self, pre: &Tensor) -> CandleResult<Tensor>;
 
     /// Update weights based on pre and post activity
-    fn update_weights(&mut self, pre: &Tensor, post: &Tensor, dt: f32) -> CandleResult<()>;
+    fn update_weights(
+        &mut self,
+        pre_activity: &Tensor,
+        post_layer: &mut Box<dyn Layer>,
+        dt: f32,
+    ) -> CandleResult<()>;
 
     /// Get weight statistics for visualization
     fn weight_stats(&self) -> CandleResult<WeightStats>;
@@ -83,9 +93,11 @@ impl Synapse {
 
     // update weights from the rule, given references to layers vector
     pub fn update(&mut self, layers: &mut [Box<dyn Layer>], dt: f32) -> CandleResult<()> {
-        let pre_s = layers[self.pre].output()?;
-        let post_s = layers[self.post].output()?;
-        let new_w = self.rule.update(&self.weight, pre_s, post_s, dt)?;
+        // let pre_s = layers[self.pre].output()?;
+        // let post_s = layers[self.post].output()?;
+        let new_w = self
+            .rule
+            .update(&self.weight, &layers[self.pre], &layers[self.post], dt)?;
         self.weight = new_w;
         Ok(())
     }

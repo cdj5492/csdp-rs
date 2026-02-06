@@ -1,7 +1,8 @@
-use crate::layer::Layer;
+use crate::layer::{Layer, ModSignal};
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
 pub struct BernoulliLayer {
+    mod_signal: ModSignal,
     inputs: Tensor,
     spikes: Tensor,
     size: usize,
@@ -10,6 +11,9 @@ pub struct BernoulliLayer {
 impl BernoulliLayer {
     pub fn new(size: usize, device: &Device) -> CandleResult<Self> {
         Ok(Self {
+            // goodness should not be optimized for on input layers (which is what this will be
+            // used for)
+            mod_signal: ModSignal::new(size, 0.0, 0.0, 0.0, device)?,
             inputs: Tensor::zeros((size, 1), DType::F32, device)?,
             spikes: Tensor::zeros((size, 1), DType::F32, device)?,
             size,
@@ -30,6 +34,11 @@ impl Layer for BernoulliLayer {
         Ok(&self.inputs)
     }
 
+    fn calc_mod_signal(&mut self, dt: f32) -> CandleResult<Tensor> {
+        self.mod_signal
+            .calc_mod_signal(&self.spikes, &self.spikes, dt)
+    }
+
     fn output(&self) -> CandleResult<&Tensor> {
         Ok(&self.spikes)
     }
@@ -37,7 +46,7 @@ impl Layer for BernoulliLayer {
     fn size(&self) -> usize {
         self.size
     }
-    
+
     fn add_input(&mut self, input: &Tensor) -> CandleResult<()> {
         self.inputs = self.inputs.add(input)?;
         Ok(())

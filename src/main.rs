@@ -107,7 +107,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let start_time = Instant::now();
 
     // training loop: unsupervised Hebbian run for a few epochs:
-    // Use tqdm only if visualization is disabled
+    // Use tqdm terminal loading bar only if visualization is disabled
     let epoch_iter: Box<dyn Iterator<Item = usize>> = if visualize {
         Box::new(1..=n_epochs)
     } else {
@@ -182,10 +182,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                             }
                         }
                     }
-                } // end if let Ok(mut state)
-                // Lock failed - skip this timestep (happens occasionally, normal behavior)
-                // end if let Some
-            } // end for t in 0..40
+                }
+            }
 
             // Update visualization snapshot every 10 iterations
             if let Some((_, ref vis_state)) = vis_handle

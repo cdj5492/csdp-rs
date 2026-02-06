@@ -1,4 +1,7 @@
-use super::{LayerVisInfo, ModelStructure, NeuronTraceManager, RuntimeStats, SynapseVisInfo, VisualizationState};
+use super::{
+    LayerVisInfo, ModelStructure, NeuronTraceManager, RuntimeStats, SynapseVisInfo,
+    VisualizationState,
+};
 use crate::synapse::LayerId;
 use egui::{Color32, Pos2, Rect, Stroke, Vec2};
 use egui_plot::{Line, Plot, PlotPoints};
@@ -134,11 +137,11 @@ impl NeuralNetworkVisualizerApp {
         }
 
         // Center force: pull all nodes toward center
-        for i in 0..num_layers {
+        for (i, force) in forces.iter_mut().enumerate().take(num_layers) {
             let dx = center_x - model.layers[i].position.x;
             let dy = center_y - model.layers[i].position.y;
-            forces[i].0 += dx * self.center_force;
-            forces[i].1 += dy * self.center_force;
+            force.0 += dx * self.center_force;
+            force.1 += dy * self.center_force;
         }
 
         // Update velocities and positions
@@ -196,10 +199,7 @@ impl NeuralNetworkVisualizerApp {
 
         // Draw the curve
         for i in 0..segments {
-            painter.line_segment(
-                [points[i], points[i + 1]],
-                Stroke::new(thickness, color),
-            );
+            painter.line_segment([points[i], points[i + 1]], Stroke::new(thickness, color));
         }
 
         // Draw arrowhead at the end
@@ -235,7 +235,11 @@ impl NeuralNetworkVisualizerApp {
         }
     }
 
-    fn draw_network(&mut self, ui: &mut egui::Ui, model: &mut crate::visualization::ModelStructure) {
+    fn draw_network(
+        &mut self,
+        ui: &mut egui::Ui,
+        model: &mut crate::visualization::ModelStructure,
+    ) {
         // Debug: Show layer count and info
         ui.label(format!(
             "Layers: {}, Synapses: {}",
@@ -246,11 +250,7 @@ impl NeuralNetworkVisualizerApp {
         let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
 
         // Clear background explicitly
-        painter.rect_filled(
-            response.rect,
-            0.0,
-            ui.style().visuals.extreme_bg_color,
-        );
+        painter.rect_filled(response.rect, 0.0, ui.style().visuals.extreme_bg_color);
 
         if model.layers.is_empty() {
             painter.text(
@@ -276,8 +276,10 @@ impl NeuralNetworkVisualizerApp {
             std::collections::HashMap::new();
 
         for synapse in &model.synapses {
-            let key = (synapse.pre_layer.min(synapse.post_layer),
-                      synapse.pre_layer.max(synapse.post_layer));
+            let key = (
+                synapse.pre_layer.min(synapse.post_layer),
+                synapse.pre_layer.max(synapse.post_layer),
+            );
             synapse_pairs.entry(key).or_default().push(synapse);
         }
 
@@ -296,19 +298,35 @@ impl NeuralNetworkVisualizerApp {
                 let thickness = (synapse.weight_stats.mean.abs() * 2.0).clamp(0.5, 5.0);
 
                 // Check if there's a reverse connection
-                let key = (synapse.pre_layer.min(synapse.post_layer),
-                          synapse.pre_layer.max(synapse.post_layer));
-                let has_bidirectional = synapse_pairs.get(&key).map(|v| v.len() > 1).unwrap_or(false);
+                let key = (
+                    synapse.pre_layer.min(synapse.post_layer),
+                    synapse.pre_layer.max(synapse.post_layer),
+                );
+                let has_bidirectional = synapse_pairs
+                    .get(&key)
+                    .map(|v| v.len() > 1)
+                    .unwrap_or(false);
 
                 // Curvature: offset for bidirectional connections
                 let curvature = if has_bidirectional {
                     // Determine which direction this synapse goes
-                    if synapse.pre_layer < synapse.post_layer { 30.0 } else { -30.0 }
+                    if synapse.pre_layer < synapse.post_layer {
+                        30.0
+                    } else {
+                        -30.0
+                    }
                 } else {
                     15.0 // Slight curve for better visibility
                 };
 
-                self.draw_curved_arrow(&painter, pre_pos, post_pos, curvature, thickness, Color32::from_gray(150));
+                self.draw_curved_arrow(
+                    &painter,
+                    pre_pos,
+                    post_pos,
+                    curvature,
+                    thickness,
+                    Color32::from_gray(150),
+                );
             }
         }
 

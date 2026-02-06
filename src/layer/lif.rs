@@ -1,18 +1,15 @@
-use crate::layer::Layer;
+use crate::layer::{Layer, ModSignal};
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct LIFLayer {
+    mod_signal: ModSignal,
     /// input currents
     inputs: Tensor,
     /// membrane potential
     state: Tensor,
     /// output spikes
     spikes: Tensor,
-    /// average output spike rates
-    avg_rate: Tensor,
-    /// averaging constant
-    trace_tau: f32,
     /// current threshold value
     thresh: f32,
     /// how fast threshold adapts
@@ -34,16 +31,21 @@ impl LIFLayer {
         let inputs = Tensor::zeros((size, 1), DType::F32, device)?;
         let state = Tensor::zeros((size, 1), DType::F32, device)?;
         let spikes = Tensor::zeros((size, 1), DType::F32, device)?;
-        let avg_rate = Tensor::zeros((size, 1), DType::F32, device)?;
+        let max_z = 1.0; // not much of a reason to have it not be 1
         Ok(Self {
+            mod_signal: ModSignal::new(
+                size,
+                trace_tau,
+                1.0,
+                (size as f32) * max_z * max_z / 2.0,
+                device,
+            )?,
             inputs,
             state,
             spikes,
-            avg_rate,
             tau,
             thresh,
             thresh_lambda,
-            trace_tau,
             size,
         })
     }
@@ -51,15 +53,11 @@ impl LIFLayer {
 
 impl Layer for LIFLayer {
     fn step(&mut self, dt: f32) -> CandleResult<()> {
-        let dv = self.inputs
-            .sub(&self.state)?
-            .affine((dt / self.tau) as f64, 0.0)?;
+        let dv = (((dt / self.tau) as f64) * self.inputs.sub(&self.state)?)?;
         self.state = self.state.add(&dv)?;
         // spikes where state > thresh
         self.spikes = self.state.gt(self.thresh)?.to_dtype(DType::F32)?;
-        self.state = self
-            .state
-            .sub(&self.spikes.affine(self.thresh as f64, 0.0)?)?;
+        self.state = self.state.sub(&((self.thresh as f64) * &self.spikes)?)?;
 
         // adjust threshold adaptively
         self.thresh += dt
@@ -71,16 +69,19 @@ impl Layer for LIFLayer {
                 .to_scalar::<f32>()?
                 / (self.size as f32)
                 - 1.0);
-        
-        // update average rate
-        let dz = self.spikes.sub(&self.avg_rate)?.affine((dt / self.trace_tau) as f64, 0.0)?;
-        self.avg_rate = self.avg_rate.add(&dz)?;
 
         Ok(())
     }
 
     fn activity(&self) -> CandleResult<&Tensor> {
         Ok(&self.state)
+    }
+
+    fn calc_mod_signal(&mut self, dt: f32) -> CandleResult<Tensor> {
+        // TODO: based on positive/negative samples. For now just 1 extended to number of neurons
+        // (all positive samples)
+        let lab = self.spikes.gt(-1.0)?.to_dtype(DType::F32)?;
+        self.mod_signal.calc_mod_signal(&self.spikes, &lab, dt)
     }
 
     fn output(&self) -> CandleResult<&Tensor> {
@@ -90,7 +91,7 @@ impl Layer for LIFLayer {
     fn size(&self) -> usize {
         self.size
     }
-    
+
     /// Adds to the input compartment of the layer
     fn add_input(&mut self, input: &Tensor) -> CandleResult<()> {
         self.inputs = self.inputs.add(input)?;
@@ -107,7 +108,6 @@ impl Layer for LIFLayer {
     fn reset(&mut self) -> CandleResult<()> {
         self.state = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
         self.spikes = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
-        self.avg_rate = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
         Ok(())
     }
 }
