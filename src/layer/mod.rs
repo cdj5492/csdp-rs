@@ -106,6 +106,9 @@ pub trait Layer: Send + Sync {
 
     /// resets internal state fully
     fn reset(&mut self) -> CandleResult<()>;
+
+    /// sets the current label for the layer
+    fn set_current_label(&mut self, label: f32);
 }
 
 /// Position of a layer in visualization space

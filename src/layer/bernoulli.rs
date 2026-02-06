@@ -62,4 +62,6 @@ impl Layer for BernoulliLayer {
         self.spikes = self.spikes.zeros_like()?;
         Ok(())
     }
+
+    fn set_current_label(&mut self, _label: f32) {}
 }

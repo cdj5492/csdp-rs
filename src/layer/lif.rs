@@ -17,6 +17,7 @@ pub struct LIFLayer {
     /// membrane time constant
     tau: f32,
     size: usize,
+    current_label: f32,
 }
 
 impl LIFLayer {
@@ -47,6 +48,7 @@ impl LIFLayer {
             thresh,
             thresh_lambda,
             size,
+            current_label: 1.0,
         })
     }
 }
@@ -79,9 +81,7 @@ impl Layer for LIFLayer {
     }
 
     fn calc_mod_signal(&mut self, dt: f32) -> CandleResult<Tensor> {
-        // TODO: based on positive/negative samples. For now just 1 extended to number of neurons
-        // (all positive samples)
-        let lab = self.spikes.gt(-1.0)?.to_dtype(DType::F32)?;
+        let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
         self.mod_signal.calc_mod_signal(&self.spikes, &lab, dt)
     }
 
@@ -110,5 +110,9 @@ impl Layer for LIFLayer {
         self.state = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
         self.spikes = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
         Ok(())
+    }
+
+    fn set_current_label(&mut self, label: f32) {
+        self.current_label = label;
     }
 }

@@ -1,3 +1,4 @@
+use rand;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -16,6 +17,7 @@ use dataset::xor::XorDataset;
 use model::Model;
 use visualization::{RuntimeStats, VisualizationState};
 
+use crate::dataset::andor::AndOrDataset;
 use crate::robot::real_lerobot::LeRobot;
 
 fn parse_args() -> bool {
@@ -69,7 +71,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Use --visualize or -v flag to enable visualization");
 
     // simple XOR dataset
-    let ds = XorDataset::new(&device)?;
+    // let ds = XorDataset::new(&device)?;
+
+    // simple AND-OR dataset
+    let ds = AndOrDataset::new(&device)?;
 
     let mut model = Model::new(vec![2, 256, 256, 1], &device, dt).unwrap();
 
@@ -116,15 +121,15 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for epoch in epoch_iter {
         let mut epoch_spike_history: Option<Vec<Vec<f32>>> = None;
-        if let Some((_, ref vis_state)) = vis_handle {
-            if let Ok(state) = vis_state.lock() {
-                if state.selected_layer_id.is_some() && epoch % 5 == 0 {
-                    epoch_spike_history = Some(Vec::new());
-                }
-            }
+        if let Some((_, ref vis_state)) = vis_handle
+            && let Ok(state) = vis_state.lock()
+            && state.selected_layer_id.is_some()
+            && epoch % 5 == 0
+        {
+            epoch_spike_history = Some(Vec::new());
         }
 
-        for (input, _label) in ds.iter() {
+        for (input, label) in ds.iter() {
             // Check for pause state
             if let Some((_, ref vis_state)) = vis_handle {
                 loop {
@@ -144,7 +149,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             iteration += 1;
 
+            let label_val = label.flatten_all()?.to_vec1::<f32>()?[0];
+            // Create negative samples with 50% probability for inputs that should be positive
+            let is_negative_sample = label_val == 1.0 && rand::random::<f32>() < 0.5;
+            let final_label = if is_negative_sample { 0.0 } else { label_val };
+
+            for layer in model.layers.iter_mut() {
+                layer.set_current_label(final_label);
+            }
+
             // Run one processing cycle (40 timesteps)
+            // TODO: why are we not using process() here?
+            model.reset();
             for _t in 0..40 {
                 model.step(input)?;
 
@@ -189,8 +205,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // Print progress
             if epoch % 50 == 0
-                && iteration % 4 == 0
-                && let Ok(out) = model.process(input, 1, false, &device)
+                && let Ok(out) = model.process(input, 40, false, &device)
             {
                 println!(
                     "Epoch {}: Input: {:?}, Output: {}",

@@ -146,11 +146,16 @@ impl Model {
             });
         }
 
-        // All hidden layers to output layer
         for i in 1..layer_configs.len() - 1 {
+            // All hidden layers to output layer, and back to hidden layer
             synapse_configs.push(SynapseConfig {
                 pre_layer: i,
                 post_layer: layer_configs.len() - 1,
+                synapse_type: SynapseType::CSDP,
+            });
+            synapse_configs.push(SynapseConfig {
+                pre_layer: layer_configs.len() - 1,
+                post_layer: i,
                 synapse_type: SynapseType::CSDP,
             });
         }
@@ -330,7 +335,7 @@ impl Model {
         Ok(())
     }
 
-    fn reset(&mut self) -> CandleResult<()> {
+    pub fn reset(&mut self) -> CandleResult<()> {
         for layer in self.layers.iter_mut() {
             layer.reset()?;
         }
