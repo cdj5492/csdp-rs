@@ -47,8 +47,6 @@ impl SynapseOps for CSDP {
         // synapse matrix in this layer (there is...)
         let mod_signal = post_layer.calc_mod_signal(dt)?;
 
-        println!("mod: {}", mod_signal);
-
         // synaptic decay factor
         // TODO: put at top level
         // let lambda_d = 0.05;

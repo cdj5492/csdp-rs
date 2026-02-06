@@ -67,8 +67,9 @@ impl Layer for LIFLayer {
                 .sum_all()?
                 .to_device(&Device::Cpu)?
                 .to_scalar::<f32>()?
-                / (self.size as f32)
                 - 1.0);
+
+        println!("thresh: {}", self.thresh);
 
         Ok(())
     }
