@@ -1,4 +1,3 @@
-use rand;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -13,7 +12,6 @@ mod utils;
 mod visualization;
 
 use candle_core::Device;
-use dataset::xor::XorDataset;
 use model::Model;
 use visualization::{RuntimeStats, VisualizationState};
 
@@ -160,20 +158,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // Run one processing cycle (40 timesteps)
             // TODO: why are we not using process() here?
-            model.reset();
+            model.reset()?;
             for _t in 0..40 {
                 model.step(input)?;
 
-                if let Some(history) = epoch_spike_history.as_mut() {
-                    if let Some((_, ref vis_state)) = vis_handle {
-                        if let Ok(state) = vis_state.lock() {
-                            if let Some(layer_id) = state.selected_layer_id {
-                                if let Ok(activity) = model.get_layer_activity(layer_id) {
-                                    history.push(activity);
-                                }
-                            }
-                        }
-                    }
+                if let Some(history) = epoch_spike_history.as_mut()
+                    && let Some((_, ref vis_state)) = vis_handle
+                    && let Ok(state) = vis_state.lock()
+                    && let Some(layer_id) = state.selected_layer_id
+                    && let Ok(activity) = model.get_layer_activity(layer_id)
+                {
+                    history.push(activity);
                 }
             }
 
@@ -216,12 +211,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
 
-        if let Some(history) = epoch_spike_history {
-            if let Some((_, ref vis_state)) = vis_handle {
-                if let Ok(mut state) = vis_state.lock() {
-                    state.epoch_spike_history = Some((epoch, history));
-                }
-            }
+        if let Some(history) = epoch_spike_history
+            && let Some((_, ref vis_state)) = vis_handle
+            && let Ok(mut state) = vis_state.lock()
+        {
+            state.epoch_spike_history = Some((epoch, history));
         }
     }
 

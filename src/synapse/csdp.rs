@@ -1,7 +1,7 @@
 use crate::layer::Layer;
 
 use super::{SynapseOps, WeightStats};
-use candle_core::{DType, Device, Result as CandleResult, Tensor};
+use candle_core::{Result as CandleResult, Tensor};
 
 #[derive(Clone)]
 #[allow(clippy::upper_case_acronyms)]

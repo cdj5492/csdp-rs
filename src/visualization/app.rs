@@ -43,11 +43,10 @@ impl NeuralNetworkVisualizerApp {
     ) {
         ui.horizontal(|ui| {
             let button_text = if is_paused { "▶ Resume" } else { "⏸ Pause" };
-            if ui.button(button_text).clicked() {
-                if let Ok(mut state) = self.vis_state.try_lock() {
+            if ui.button(button_text).clicked()
+                && let Ok(mut state) = self.vis_state.try_lock() {
                     state.is_paused = !state.is_paused;
                 }
-            }
             ui.separator();
             ui.label(format!("Epoch: {}/{}", stats.epoch, total_epochs));
             ui.separator();
@@ -329,10 +328,10 @@ impl NeuralNetworkVisualizerApp {
         let click_radius = base_size;
         let rect = Rect::from_center_size(pos, Vec2::splat(click_radius * 2.0));
 
-        if response.clicked() {
-            if let Some(click_pos) = response.interact_pointer_pos() {
-                if rect.contains(click_pos) {
-                    if let Ok(mut state) = self.vis_state.lock() {
+        if response.clicked()
+            && let Some(click_pos) = response.interact_pointer_pos()
+                && rect.contains(click_pos)
+                    && let Ok(mut state) = self.vis_state.lock() {
                         if state.selected_layer_id == Some(layer.id) {
                             state.selected_layer_id = None;
                             self.spike_history.clear();
@@ -341,13 +340,10 @@ impl NeuralNetworkVisualizerApp {
                             self.spike_history.clear();
                         }
                     }
-                }
-            }
-        }
 
-        if response.hovered() {
-            if let Some(hover_pos) = response.hover_pos() {
-                if rect.contains(hover_pos) {
+        if response.hovered()
+            && let Some(hover_pos) = response.hover_pos()
+                && rect.contains(hover_pos) {
                     egui::Area::new(egui::Id::new(format!("layer_tooltip_{}", layer.id)))
                         .fixed_pos(hover_pos + Vec2::new(10.0, 10.0))
                         .show(&response.ctx, |ui| {
@@ -360,8 +356,6 @@ impl NeuralNetworkVisualizerApp {
                             });
                         });
                 }
-            }
-        }
     }
 
     fn draw_layer_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
@@ -389,12 +383,11 @@ impl NeuralNetworkVisualizerApp {
             // Update local selected_layer_id from shared state
             self.selected_layer_id = state.selected_layer_id;
             // Consume new epoch data if available
-            if let Some((epoch, history)) = state.epoch_spike_history.take() {
-                if self.displayed_epoch != epoch {
+            if let Some((epoch, history)) = state.epoch_spike_history.take()
+                && self.displayed_epoch != epoch {
                     self.spike_history = history;
                     self.displayed_epoch = epoch;
                 }
-            }
         }
 
         ui.heading(format!("Spike Raster Plot (Epoch {})", self.displayed_epoch));
