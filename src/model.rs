@@ -75,14 +75,20 @@ pub struct ProcessOutput {
 
 impl Model {
     /// Create a new CSDP model with default configuration (backward compatible).
-    pub fn new(layer_sizes: Vec<usize>, device: &Device, dt: f32) -> Option<Self> {
+    pub fn new(
+        input_size: usize,
+        output_size: usize,
+        hidden_sizes: Vec<usize>,
+        device: &Device,
+        dt: f32,
+    ) -> Option<Self> {
         // Default LIF parameters
         let g_thr = 2.0;
         let tau_lif = 13.0;
         let trace_tau = 5.0;
         let thresh_lambda = 0.01;
 
-        if layer_sizes.len() < 3 {
+        if hidden_sizes.is_empty() {
             return None;
         }
 
@@ -90,18 +96,22 @@ impl Model {
         let mut layer_configs = vec![];
 
         // Input layer (Bernoulli)
+        // Index 0
         layer_configs.push(LayerConfig::Bernoulli {
-            size: layer_sizes[0],
+            size: input_size,
             name: Some("Input".to_string()),
         });
 
+        // Context input layer (labels when in training)
+        // Index 1
+        layer_configs.push(LayerConfig::Bernoulli {
+            size: output_size,
+            name: Some("Context".to_string()),
+        });
+
         // Hidden layers (LIF)
-        for (i, &size) in layer_sizes
-            .iter()
-            .skip(1)
-            .take(layer_sizes.len() - 2)
-            .enumerate()
-        {
+        // Index 2...
+        for (i, &size) in hidden_sizes.iter().enumerate() {
             layer_configs.push(LayerConfig::LIF {
                 size,
                 tau: tau_lif,
@@ -113,8 +123,9 @@ impl Model {
         }
 
         // Output layer (LIF)
+        // Index (2+hidden_sizes.len())
         layer_configs.push(LayerConfig::LIF {
-            size: *layer_sizes.last()?,
+            size: output_size,
             tau: tau_lif,
             g_thr,
             thresh_lambda,
@@ -128,12 +139,19 @@ impl Model {
         // Input to first hidden layer
         synapse_configs.push(SynapseConfig {
             pre_layer: 0,
-            post_layer: 1,
+            post_layer: 2,
+            synapse_type: SynapseType::CSDP,
+        });
+
+        // Context to first hidden layer
+        synapse_configs.push(SynapseConfig {
+            pre_layer: 1,
+            post_layer: 2,
             synapse_type: SynapseType::CSDP,
         });
 
         // Hidden layers with bidirectional connections
-        for i in 1..layer_configs.len() - 2 {
+        for i in 2..hidden_sizes.len() + 1 {
             synapse_configs.push(SynapseConfig {
                 pre_layer: i,
                 post_layer: i + 1,
@@ -146,15 +164,15 @@ impl Model {
             });
         }
 
-        for i in 1..layer_configs.len() - 1 {
+        for i in 2..=hidden_sizes.len() + 1 {
             // All hidden layers to output layer, and back to hidden layer
             synapse_configs.push(SynapseConfig {
                 pre_layer: i,
-                post_layer: layer_configs.len() - 1,
+                post_layer: 2 + hidden_sizes.len(),
                 synapse_type: SynapseType::CSDP,
             });
             synapse_configs.push(SynapseConfig {
-                pre_layer: layer_configs.len() - 1,
+                pre_layer: 2 + hidden_sizes.len(),
                 post_layer: i,
                 synapse_type: SynapseType::CSDP,
             });
@@ -198,6 +216,7 @@ impl Model {
                 synapse_type: format!("{:?}", syn_config.synapse_type),
                 is_learning: true,
             };
+            println!("creating synapse: {:?}", metadata);
             synapses.push(SynapseConnection { metadata, synapse });
         }
 
@@ -289,35 +308,44 @@ impl Model {
     }
 
     /// Run one timestep: update layers and synapses once.
-    pub fn step(&mut self, input: &Tensor) -> CandleResult<()> {
+    pub fn step(&mut self, input: &Tensor, context: Option<&Tensor>) -> CandleResult<()> {
         // Reset inputs for all layers except input layer
-        for layer in self.layers.iter_mut().skip(1) {
+        for layer in self.layers.iter_mut() {
             layer.reset_input()?;
         }
 
         // Add input to first layer and step it
-        if !self.layers.is_empty() {
-            self.layers[0].add_input(input)?;
-            self.layers[0].step(self.dt)?;
+        self.layers[0].add_input(input)?;
+        self.layers[0].step(self.dt)?;
+
+        // add context to second layer and step it
+        if let Some(label) = context {
+            self.layers[1].add_input(label)?;
+            self.layers[1].step(self.dt)?;
         }
 
-        // Process synapses: forward pass and weight updates
+        // Synapse forward pass
         for syn_conn in self.synapses.iter_mut() {
             let pre_layer_id = syn_conn.metadata.pre_layer;
             let post_layer_id = syn_conn.metadata.post_layer;
-
-            // Get pre-synaptic activity
             let pre_activity = self.layers[pre_layer_id].output()?.clone();
-
-            // Forward
             let post_input = syn_conn.synapse.forward(&pre_activity)?;
 
-            // Add to post-synaptic layer input
             self.layers[post_layer_id].add_input(&post_input)?;
+        }
 
-            // Update weights if learning is enabled
+        // Step all layers except the input and context layer (already stepped)
+        for layer in self.layers.iter_mut().skip(2) {
+            layer.step(self.dt)?;
+        }
+
+        // Synapse weight updates
+        // Update weights if learning is enabled
+        for syn_conn in self.synapses.iter_mut() {
             if self.is_learning && syn_conn.metadata.is_learning {
-                // let post_activity = self.layers[post_layer_id].output()?.clone();
+                let pre_layer_id = syn_conn.metadata.pre_layer;
+                let post_layer_id = syn_conn.metadata.post_layer;
+                let pre_activity = self.layers[pre_layer_id].output()?.clone();
 
                 syn_conn.synapse.update_weights(
                     &pre_activity,
@@ -325,11 +353,6 @@ impl Model {
                     self.dt,
                 )?;
             }
-        }
-
-        // Step all layers except the input layer (already stepped)
-        for layer in self.layers.iter_mut().skip(1) {
-            layer.step(self.dt)?;
         }
 
         Ok(())
@@ -356,7 +379,7 @@ impl Model {
         };
         self.reset()?;
         for _ in 0..timesteps {
-            self.step(input)?;
+            self.step(input, None)?; // no labels provided during inference
 
             if collect_data && !self.layers.is_empty() {
                 let output = self.layers.last().unwrap().output()?;

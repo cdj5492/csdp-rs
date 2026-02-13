@@ -43,10 +43,10 @@ struct ModSignal {
     omega: f32,
     /// current z
     z: Tensor,
-    /// delta z
-    dz: Tensor,
     /// previous loss
     prev_loss: Tensor,
+    /// modulartory signal
+    mod_signal: Tensor,
 }
 
 impl ModSignal {
@@ -62,22 +62,23 @@ impl ModSignal {
             max_z,
             omega,
             z: Tensor::zeros((size, 1), DType::F32, device)?,
-            dz: Tensor::zeros((size, 1), DType::F32, device)?,
             prev_loss: Tensor::zeros((size, 1), DType::F32, device)?,
+            mod_signal: Tensor::zeros((size, 1), DType::F32, device)?,
         })
     }
     /// dC/dz_i
-    fn calc_mod_signal(&mut self, spikes: &Tensor, lab: &Tensor, dt: f32) -> CandleResult<Tensor> {
-        self.dz =
+    fn calc_mod_signal(&mut self, spikes: &Tensor, lab: &Tensor, dt: f32) -> CandleResult<()> {
+        let dz =
             (((dt / self.trace_tau) as f64) * (((self.max_z as f64) * spikes)?.sub(&self.z)?))?;
-        self.z = self.z.add(&self.dz)?;
+        self.z = self.z.add(&dz)?;
         let l = calc_loss_ce(&self.z, lab, self.omega)?;
         let dl = l.sub(&self.prev_loss)?;
         self.prev_loss = l;
-        let dz_ep = (&self.dz + 0.00001)?;
+        let dz_ep = (&dz + 0.00001)?;
         // dl.repeat((self.z.dims()[0], 1))?.div(&dz_ep)
         // basic 2 point derivative
-        dl.div(&dz_ep)
+        self.mod_signal = dl.div(&dz_ep)?;
+        Ok(())
     }
 }
 
@@ -90,7 +91,7 @@ pub trait Layer: Send + Sync {
     fn activity(&self) -> CandleResult<&Tensor>;
 
     /// calculates the modulatory goodness signal used for CSDP synapse adjustment
-    fn calc_mod_signal(&mut self, dt: f32) -> CandleResult<Tensor>;
+    fn get_mod_signal(&self) -> &Tensor;
 
     /// output getter
     fn output(&self) -> CandleResult<&Tensor>;

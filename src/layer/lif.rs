@@ -71,7 +71,8 @@ impl Layer for LIFLayer {
                 .to_scalar::<f32>()?
                 - 1.0);
 
-        // println!("thresh: {}", self.thresh);
+        let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
+        self.mod_signal.calc_mod_signal(&self.spikes, &lab, dt)?;
 
         Ok(())
     }
@@ -80,9 +81,8 @@ impl Layer for LIFLayer {
         Ok(&self.state)
     }
 
-    fn calc_mod_signal(&mut self, dt: f32) -> CandleResult<Tensor> {
-        let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
-        self.mod_signal.calc_mod_signal(&self.spikes, &lab, dt)
+    fn get_mod_signal(&self) -> &Tensor {
+        &self.mod_signal.mod_signal
     }
 
     fn output(&self) -> CandleResult<&Tensor> {

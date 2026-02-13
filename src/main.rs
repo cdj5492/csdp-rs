@@ -58,7 +58,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("No physical leader robot connected");
     }
 
-    let n_epochs = 100;
+    let n_epochs = 1000;
+    let n_timesteps = 40; // number of simulated timesteps per iteration
     let dt = 0.1;
     let visualize = parse_args();
 
@@ -74,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // simple AND-OR dataset
     let ds = AndOrDataset::new(&device)?;
 
-    let mut model = Model::new(vec![2, 256, 256, 1], &device, dt).unwrap();
+    let mut model = Model::new(2, 1, vec![256, 256], &device, dt).unwrap();
 
     println!(
         "layers len: {}, num_synapses: {}",
@@ -156,11 +157,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 layer.set_current_label(final_label);
             }
 
-            // Run one processing cycle (40 timesteps)
-            // TODO: why are we not using process() here?
+            // Run one processing cycle
             model.reset()?;
-            for _t in 0..40 {
-                model.step(input)?;
+            for _t in 0..n_timesteps {
+                // println!("label: {}", label);
+                model.step(input, Some(label))?;
 
                 if let Some(history) = epoch_spike_history.as_mut()
                     && let Some((_, ref vis_state)) = vis_handle
@@ -193,19 +194,19 @@ fn main() -> Result<(), Box<dyn Error>> {
                 state.runtime_stats = RuntimeStats {
                     epoch,
                     iteration,
-                    timestep: iteration * 40,
+                    timestep: iteration * n_timesteps,
                     iterations_per_second: speed,
                 };
             }
 
             // Print progress
             if epoch % 50 == 0
-                && let Ok(out) = model.process(input, 40, false, &device)
+                && let Ok(out) = model.process(input, n_timesteps, false, &device)
             {
                 println!(
-                    "Epoch {}: Input: {:?}, Output: {}",
+                    "Epoch {}: Input: {}, Output: {}",
                     epoch,
-                    input.to_device(&cpu),
+                    input.to_device(&cpu)?,
                     out.final_output.to_device(&cpu)?
                 );
             }

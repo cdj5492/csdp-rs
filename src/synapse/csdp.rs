@@ -18,7 +18,7 @@ impl CSDP {
         device: &candle_core::Device,
     ) -> CandleResult<Self> {
         // TODO: tune initialization
-        let weights = Tensor::randn(0.0f32, 0.1, (post_size, pre_size), device)?;
+        let weights = Tensor::rand(-1.0f32, 1.0, (post_size, pre_size), device)?;
         let biases = Tensor::zeros((post_size, 1), candle_core::DType::F32, device)?;
         Ok(Self { weights, biases })
     }
@@ -43,16 +43,15 @@ impl SynapseOps for CSDP {
         // let post_col = post.reshape((post.dims()[0], 1))?;
         let pre_row = pre.reshape((1, pre.dims()[0]))?;
 
-        // TODO: BAD BAD BAD! This will get called many times if there is more than 1 outgoing
-        // synapse matrix in this layer (there is...)
-        let mod_signal = post_layer.calc_mod_signal(dt)?;
+        let mod_signal = post_layer.get_mod_signal();
 
         // synaptic decay factor
         // TODO: put at top level
-        // let lambda_d = 0.05;
+        let lambda_d = 0.05;
 
         // outer product (should be same shape as weight matrix)
-        let delta = mod_signal.matmul(&pre_row)?;
+        let delta = (mod_signal.matmul(&pre_row)?
+            + lambda_d * post_layer.output()?.matmul(&(1.0 - pre_row)?)?)?;
         self.weights = self.weights.add(&delta)?;
 
         // TODO: figure out biases

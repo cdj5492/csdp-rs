@@ -6,6 +6,7 @@ pub struct BernoulliLayer {
     inputs: Tensor,
     spikes: Tensor,
     size: usize,
+    current_label: f32,
 }
 
 impl BernoulliLayer {
@@ -17,16 +18,21 @@ impl BernoulliLayer {
             inputs: Tensor::zeros((size, 1), DType::F32, device)?,
             spikes: Tensor::zeros((size, 1), DType::F32, device)?,
             size,
+            current_label: 1.0,
         })
     }
 }
 
 impl Layer for BernoulliLayer {
-    fn step(&mut self, _dt: f32) -> CandleResult<()> {
+    fn step(&mut self, dt: f32) -> CandleResult<()> {
         // clamp input to [0,1]
         let clamped = self.inputs.clamp(0.0, 1.0)?;
         let random_vals = Tensor::rand_like(&clamped, 0.0, 1.1)?;
         self.spikes = clamped.ge(&random_vals)?.to_dtype(DType::F32)?;
+
+        let lab = Tensor::ones((self.size, 1), DType::F32, self.inputs.device())?;
+        self.mod_signal.calc_mod_signal(&self.spikes, &lab, dt)?;
+
         Ok(())
     }
 
@@ -34,9 +40,8 @@ impl Layer for BernoulliLayer {
         Ok(&self.inputs)
     }
 
-    fn calc_mod_signal(&mut self, dt: f32) -> CandleResult<Tensor> {
-        self.mod_signal
-            .calc_mod_signal(&self.spikes, &self.spikes, dt)
+    fn get_mod_signal(&self) -> &Tensor {
+        &self.mod_signal.mod_signal
     }
 
     fn output(&self) -> CandleResult<&Tensor> {
@@ -63,5 +68,7 @@ impl Layer for BernoulliLayer {
         Ok(())
     }
 
-    fn set_current_label(&mut self, _label: f32) {}
+    fn set_current_label(&mut self, label: f32) {
+        self.current_label = label;
+    }
 }
