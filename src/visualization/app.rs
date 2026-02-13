@@ -363,6 +363,45 @@ impl NeuralNetworkVisualizerApp {
         }
     }
 
+
+    fn draw_synapse_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
+        ui.heading("Synapse Details");
+        ui.separator();
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if model.synapses.is_empty() {
+                ui.label("No synapses to display.");
+            } else {
+                for synapse in &model.synapses {
+                    let pre_layer_name = model
+                        .layers
+                        .iter()
+                        .find(|l| l.id == synapse.pre_layer)
+                        .map_or("Unknown".to_string(), |l| l.name.clone());
+                    let post_layer_name = model
+                        .layers
+                        .iter()
+                        .find(|l| l.id == synapse.post_layer)
+                        .map_or("Unknown".to_string(), |l| l.name.clone());
+
+                    ui.collapsing(
+                        format!(
+                            "Synapse {} ({} -> {})",
+                            synapse.id, pre_layer_name, post_layer_name
+                        ),
+                        |ui| {
+                            ui.label(format!("Type: {}", synapse.synapse_type));
+                            ui.label(format!("Num Weights: {}", synapse.weight_stats.num_weights));
+                            ui.label(format!("Mean: {:.4}", synapse.weight_stats.mean));
+                            ui.label(format!("Std Dev: {:.4}", synapse.weight_stats.std));
+                            ui.label(format!("Min: {:.4}", synapse.weight_stats.min));
+                            ui.label(format!("Max: {:.4}", synapse.weight_stats.max));
+                        },
+                    );
+                }
+            }
+        });
+    }
+
     fn draw_layer_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
         ui.heading("Layer Details");
         ui.separator();
@@ -545,6 +584,9 @@ impl eframe::App for NeuralNetworkVisualizerApp {
             .min_width(200.0)
             .show(ctx, |ui| {
                 self.draw_layer_details(ui, &model_structure);
+                ui.add_space(10.0);
+                ui.separator();
+                self.draw_synapse_details(ui, &model_structure);
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {

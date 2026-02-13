@@ -75,7 +75,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // simple AND-OR dataset
     let ds = AndOrDataset::new(&device)?;
 
-    let mut model = Model::new(2, 1, vec![256, 256], &device, dt).unwrap();
+    let mut model = Model::new(2, 1, vec![256, 512, 256], &device, dt).unwrap();
 
     println!(
         "layers len: {}, num_synapses: {}",
