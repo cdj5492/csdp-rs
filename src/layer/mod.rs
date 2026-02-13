@@ -6,13 +6,14 @@ use candle_nn::ops::sigmoid;
 
 /// p[y_type=1; z(t)]
 fn calc_goodness(z: &Tensor, thr: f32, maximize: bool) -> CandleResult<f32> {
+    let thr = thr as f64;
     let z_sqr = z.mul(z)?;
     // TODO: I don't think this is right
     let delta = z_sqr.sum_all()?;
     let delta = if maximize {
-        delta.affine(1.0, -(thr * thr) as f64)?
+        ((-thr * thr) + delta)?
     } else {
-        delta.affine(-1.0, (thr * thr) as f64)?
+        ((thr * thr) - delta)?
     };
 
     let p = sigmoid(&delta)?;

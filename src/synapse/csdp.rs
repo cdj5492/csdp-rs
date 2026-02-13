@@ -20,6 +20,7 @@ impl CSDP {
         // TODO: tune initialization
         let weights = Tensor::rand(-1.0f32, 1.0, (post_size, pre_size), device)?;
         let biases = Tensor::zeros((post_size, 1), candle_core::DType::F32, device)?;
+        // let biases = Tensor::rand(-1.0f32, 1.0, (post_size, 1), device)?;
         Ok(Self { weights, biases })
     }
 }
@@ -35,12 +36,9 @@ impl SynapseOps for CSDP {
         &mut self,
         pre_activity: &Tensor,
         post_layer: &mut Box<dyn Layer>,
-        dt: f32,
+        _dt: f32,
     ) -> CandleResult<()> {
         let pre = pre_activity;
-        // let post = post_layer.output()?;
-        // outer = post[:,None] @ pre[None,:]  -> shape (post, pre)
-        // let post_col = post.reshape((post.dims()[0], 1))?;
         let pre_row = pre.reshape((1, pre.dims()[0]))?;
 
         let mod_signal = post_layer.get_mod_signal();

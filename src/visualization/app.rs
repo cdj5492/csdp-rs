@@ -44,9 +44,10 @@ impl NeuralNetworkVisualizerApp {
         ui.horizontal(|ui| {
             let button_text = if is_paused { "▶ Resume" } else { "⏸ Pause" };
             if ui.button(button_text).clicked()
-                && let Ok(mut state) = self.vis_state.try_lock() {
-                    state.is_paused = !state.is_paused;
-                }
+                && let Ok(mut state) = self.vis_state.try_lock()
+            {
+                state.is_paused = !state.is_paused;
+            }
             ui.separator();
             ui.label(format!("Epoch: {}/{}", stats.epoch, total_epochs));
             ui.separator();
@@ -179,28 +180,36 @@ impl NeuralNetworkVisualizerApp {
 
         let arrow_len: f32 = 10.0;
         let arrow_angle: f32 = 0.5;
-        let end_t = 0.95;
-        let t2 = 1.0 - end_t;
-        let arrow_base_x = t2 * t2 * from.x + 2.0 * t2 * end_t * control.x + end_t * end_t * to.x;
-        let arrow_base_y = t2 * t2 * from.y + 2.0 * t2 * end_t * control.y + end_t * end_t * to.y;
-        let arrow_base = Pos2::new(arrow_base_x, arrow_base_y);
-        let dir_x = to.x - arrow_base.x;
-        let dir_y = to.y - arrow_base.y;
+
+        let mid_t = 0.5;
+        let mt2 = 1.0 - mid_t;
+        let arrow_tip = Pos2::new(
+            mt2 * mt2 * from.x + 2.0 * mt2 * mid_t * control.x + mid_t * mid_t * to.x,
+            mt2 * mt2 * from.y + 2.0 * mt2 * mid_t * control.y + mid_t * mid_t * to.y,
+        );
+
+        let dir_x = to.x - from.x;
+        let dir_y = to.y - from.y;
         let dir_len = (dir_x * dir_x + dir_y * dir_y).sqrt();
 
         if dir_len > 0.0 {
             let dx = dir_x / dir_len;
             let dy = dir_y / dir_len;
+
+            let cos_a = arrow_angle.cos();
+            let sin_a = arrow_angle.sin();
+
             let left = Pos2::new(
-                to.x - arrow_len * (dx * arrow_angle.cos() - dy * arrow_angle.sin()),
-                to.y - arrow_len * (dx * arrow_angle.sin() + dy * arrow_angle.cos()),
+                arrow_tip.x - arrow_len * (dx * cos_a - dy * sin_a),
+                arrow_tip.y - arrow_len * (dx * sin_a + dy * cos_a),
             );
             let right = Pos2::new(
-                to.x - arrow_len * (dx * arrow_angle.cos() + dy * arrow_angle.sin()),
-                to.y - arrow_len * (dy * arrow_angle.cos() - dx * arrow_angle.sin()),
+                arrow_tip.x - arrow_len * (dx * cos_a + dy * sin_a),
+                arrow_tip.y - arrow_len * (dy * cos_a - dx * sin_a),
             );
-            painter.line_segment([to, left], Stroke::new(thickness, color));
-            painter.line_segment([to, right], Stroke::new(thickness, color));
+
+            painter.line_segment([arrow_tip, left], Stroke::new(thickness, color));
+            painter.line_segment([arrow_tip, right], Stroke::new(thickness, color));
         }
     }
 
@@ -254,17 +263,11 @@ impl NeuralNetworkVisualizerApp {
                     synapse.pre_layer.min(synapse.post_layer),
                     synapse.pre_layer.max(synapse.post_layer),
                 );
-                let has_bidirectional =
-                    synapse_pairs.get(&key).map(|v| v.len() > 1).unwrap_or(false);
-                let curvature = if has_bidirectional {
-                    if synapse.pre_layer < synapse.post_layer {
-                        30.0
-                    } else {
-                        -30.0
-                    }
-                } else {
-                    15.0
-                };
+                let has_bidirectional = synapse_pairs
+                    .get(&key)
+                    .map(|v| v.len() > 1)
+                    .unwrap_or(false);
+                let curvature = if has_bidirectional { 30.0 } else { 0.0 };
                 self.draw_curved_arrow(
                     &painter,
                     pre_pos,
@@ -330,32 +333,34 @@ impl NeuralNetworkVisualizerApp {
 
         if response.clicked()
             && let Some(click_pos) = response.interact_pointer_pos()
-                && rect.contains(click_pos)
-                    && let Ok(mut state) = self.vis_state.lock() {
-                        if state.selected_layer_id == Some(layer.id) {
-                            state.selected_layer_id = None;
-                            self.spike_history.clear();
-                        } else {
-                            state.selected_layer_id = Some(layer.id);
-                            self.spike_history.clear();
-                        }
-                    }
+            && rect.contains(click_pos)
+            && let Ok(mut state) = self.vis_state.lock()
+        {
+            if state.selected_layer_id == Some(layer.id) {
+                state.selected_layer_id = None;
+                self.spike_history.clear();
+            } else {
+                state.selected_layer_id = Some(layer.id);
+                self.spike_history.clear();
+            }
+        }
 
         if response.hovered()
             && let Some(hover_pos) = response.hover_pos()
-                && rect.contains(hover_pos) {
-                    egui::Area::new(egui::Id::new(format!("layer_tooltip_{}", layer.id)))
-                        .fixed_pos(hover_pos + Vec2::new(10.0, 10.0))
-                        .show(&response.ctx, |ui| {
-                            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                                ui.label(format!("Layer: {}", layer.name));
-                                ui.label(format!("Type: {}", layer.layer_type));
-                                ui.label(format!("Size: {} neurons", layer.size));
-                                ui.label(format!("Active: {} neurons", layer.spike_count));
-                                ui.label(format!("Activity: {:.1}%", activity_ratio * 100.0));
-                            });
-                        });
-                }
+            && rect.contains(hover_pos)
+        {
+            egui::Area::new(egui::Id::new(format!("layer_tooltip_{}", layer.id)))
+                .fixed_pos(hover_pos + Vec2::new(10.0, 10.0))
+                .show(&response.ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.label(format!("Layer: {}", layer.name));
+                        ui.label(format!("Type: {}", layer.layer_type));
+                        ui.label(format!("Size: {} neurons", layer.size));
+                        ui.label(format!("Active: {} neurons", layer.spike_count));
+                        ui.label(format!("Activity: {:.1}%", activity_ratio * 100.0));
+                    });
+                });
+        }
     }
 
     fn draw_layer_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
@@ -384,13 +389,17 @@ impl NeuralNetworkVisualizerApp {
             self.selected_layer_id = state.selected_layer_id;
             // Consume new epoch data if available
             if let Some((epoch, history)) = state.epoch_spike_history.take()
-                && self.displayed_epoch != epoch {
-                    self.spike_history = history;
-                    self.displayed_epoch = epoch;
-                }
+                && self.displayed_epoch != epoch
+            {
+                self.spike_history = history;
+                self.displayed_epoch = epoch;
+            }
         }
 
-        ui.heading(format!("Spike Raster Plot (Epoch {})", self.displayed_epoch));
+        ui.heading(format!(
+            "Spike Raster Plot (Epoch {})",
+            self.displayed_epoch
+        ));
         if let Some(layer_id) = self.selected_layer_id {
             if let Some(layer) = model.layers.iter().find(|l| l.id == layer_id) {
                 ui.label(format!(
@@ -409,12 +418,24 @@ impl NeuralNetworkVisualizerApp {
                 let mut image_data = Vec::with_capacity(num_neurons * num_timesteps * 4);
                 for n in 0..num_neurons {
                     for t in 0..num_timesteps {
-                        let spike_val = self.spike_history.get(t).and_then(|s| s.get(n)).cloned().unwrap_or(0.0);
-                        let color = if spike_val > 0.0 { Color32::WHITE } else { Color32::BLACK };
+                        let spike_val = self
+                            .spike_history
+                            .get(t)
+                            .and_then(|s| s.get(n))
+                            .cloned()
+                            .unwrap_or(0.0);
+                        let color = if spike_val > 0.0 {
+                            Color32::WHITE
+                        } else {
+                            Color32::BLACK
+                        };
                         image_data.extend_from_slice(&color.to_array());
                     }
                 }
-                let image = egui::ColorImage::from_rgba_unmultiplied([num_timesteps, num_neurons], &image_data);
+                let image = egui::ColorImage::from_rgba_unmultiplied(
+                    [num_timesteps, num_neurons],
+                    &image_data,
+                );
 
                 let texture_options = egui::TextureOptions {
                     magnification: egui::TextureFilter::Nearest,
@@ -423,7 +444,8 @@ impl NeuralNetworkVisualizerApp {
                 };
 
                 let texture = self.raster_texture.get_or_insert_with(|| {
-                    ui.ctx().load_texture("raster_plot", image.clone(), texture_options)
+                    ui.ctx()
+                        .load_texture("raster_plot", image.clone(), texture_options)
                 });
                 texture.set(image, texture_options);
 
@@ -456,18 +478,11 @@ impl NeuralNetworkVisualizerApp {
                     if displayed_height < min_display_height && num_neurons > 0 {
                         let current_scale = displayed_height / image_original_height;
                         let target_scale = min_display_height / image_original_height;
-                        if target_scale > current_scale { // Only scale up if smaller than min_display_height
+                        if target_scale > current_scale {
+                            // Only scale up if smaller than min_display_height
                             displayed_width = image_original_width * target_scale;
                             displayed_height = image_original_height * target_scale;
                         }
-                    }
-
-                    // Set a maximum displayed height to prevent it from dominating the UI
-                    let max_rendered_height = 600.0;
-                    if displayed_height > max_rendered_height {
-                         let scale = max_rendered_height / displayed_height;
-                         displayed_width *= scale;
-                         displayed_height *= scale;
                     }
 
                     let displayed_size = Vec2::new(displayed_width, displayed_height) * self.zoom;
@@ -480,7 +495,6 @@ impl NeuralNetworkVisualizerApp {
                         }
                     }
                 });
-
             } else {
                 ui.label("Selected layer not found.");
             }
@@ -541,14 +555,17 @@ impl eframe::App for NeuralNetworkVisualizerApp {
 
         if let Ok(mut state) = self.vis_state.try_lock() {
             for layer in &model_structure.layers {
-                if let Some(state_layer) =
-                    state.model_structure.layers.iter_mut().find(|l| l.id == layer.id)
+                if let Some(state_layer) = state
+                    .model_structure
+                    .layers
+                    .iter_mut()
+                    .find(|l| l.id == layer.id)
                 {
                     state_layer.position = layer.position;
                 }
             }
             // Update local selected_layer_id from shared state
-             self.selected_layer_id = state.selected_layer_id;
+            self.selected_layer_id = state.selected_layer_id;
         }
     }
 }

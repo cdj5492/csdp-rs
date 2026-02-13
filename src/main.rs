@@ -5,14 +5,14 @@ use tqdm::Iter;
 
 mod dataset;
 mod layer;
-mod model;
+mod models;
 mod robot;
 mod synapse;
 mod utils;
 mod visualization;
 
 use candle_core::Device;
-use model::Model;
+use models::Model;
 use visualization::{RuntimeStats, VisualizationState};
 
 use crate::dataset::andor::AndOrDataset;
@@ -209,6 +209,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     input.to_device(&cpu)?,
                     out.final_output.to_device(&cpu)?
                 );
+
+                // println!("weights: {:?}", model.synapses[0].synapse.weight_stats());
             }
         }
 

@@ -10,8 +10,8 @@ impl AndOrDataset {
         let pairs = vec![
             (vec![0.0f32, 0.0f32], vec![0.0f32]),
             (vec![0.0f32, 1.0f32], vec![0.0f32]),
-            (vec![1.0f32, 0.0f32], vec![0.0f32]),
             (vec![1.0f32, 1.0f32], vec![1.0f32]),
+            (vec![1.0f32, 0.0f32], vec![0.0f32]),
         ];
         let mut ins = Vec::with_capacity(4);
         let mut labs = Vec::with_capacity(4);
