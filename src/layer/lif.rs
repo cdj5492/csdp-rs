@@ -112,7 +112,7 @@ impl Layer for LIFLayer {
         Ok(())
     }
 
-    fn set_current_label(&mut self, label: f32) {
+    fn set_positive_sample(&mut self, label: f32) {
         self.current_label = label;
     }
 }

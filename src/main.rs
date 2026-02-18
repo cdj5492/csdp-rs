@@ -16,6 +16,7 @@ use models::Model;
 use visualization::{RuntimeStats, VisualizationState};
 
 use crate::dataset::andor::AndOrDataset;
+use crate::dataset::realtime_leader::RealtimeLeader;
 use crate::robot::real_lerobot::LeRobot;
 
 fn parse_args() -> bool {
@@ -58,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("No physical leader robot connected");
     }
 
-    let n_epochs = 1000;
+    let n_epochs = 100;
     let n_timesteps = 40; // number of simulated timesteps per iteration
     let dt = 0.1;
     let visualize = parse_args();
@@ -75,6 +76,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     // simple AND-OR dataset
     let ds = AndOrDataset::new(&device)?;
 
+    // test dataset collecting realtime data from robot
+    // let mut ds = RealtimeLeader::new(
+    //     leader.expect("Realtime leader dataset requires leader to be connected"),
+    //     5,
+    //     device.clone(),
+    // );
+
+    // let mut model = Model::new(2, 1, vec![256, 512, 256], &device, dt).unwrap();
     let mut model = Model::new(2, 1, vec![256, 512, 256], &device, dt).unwrap();
 
     println!(
@@ -128,7 +137,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             epoch_spike_history = Some(Vec::new());
         }
 
-        for (input, label) in ds.iter() {
+        for (input, label, &positive) in ds.iter() {
+            // let mut iter = ds.iter();
+            // while let Some(Ok((input, label, positive))) = iter.next() {
+            //     let input = &input;
+            //     let label = &label;
+
             // Check for pause state
             if let Some((_, ref vis_state)) = vis_handle {
                 loop {
@@ -148,13 +162,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             iteration += 1;
 
-            let label_val = label.flatten_all()?.to_vec1::<f32>()?[0];
-            // Create negative samples with 50% probability for inputs that should be positive
-            let is_negative_sample = label_val == 1.0 && rand::random::<f32>() < 0.5;
-            let final_label = if is_negative_sample { 0.0 } else { label_val };
-
             for layer in model.layers.iter_mut() {
-                layer.set_current_label(final_label);
+                layer.set_positive_sample(positive);
             }
 
             // Run one processing cycle
@@ -200,17 +209,21 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
             // Print progress
-            if epoch % 50 == 0
-                && let Ok(out) = model.process(input, n_timesteps, false, &device)
-            {
-                println!(
-                    "Epoch {}: Input: {}, Output: {}",
-                    epoch,
-                    input.to_device(&cpu)?,
-                    out.final_output.to_device(&cpu)?
-                );
-
-                // println!("weights: {:?}", model.synapses[0].synapse.weight_stats());
+            if epoch % 50 == 0 {
+                // for (input, _label, &positive) in ds.iter() {
+                //     if let Ok(out) = model.process(input, n_timesteps, false, &device) {
+                //         println!(
+                //             "Epoch {}: Input: {}, Positive?: {}, Output: {}, Hidden0 activity: {}",
+                //             epoch,
+                //             input.to_device(&cpu)?,
+                //             positive,
+                //             out.final_output.to_device(&cpu)?,
+                //             model.get_layer_activity(2)?.iter().sum::<f32>()
+                //         );
+                //     }
+                // }
+                //
+                // // println!("weights: {:?}", model.synapses[0].synapse.weight_stats());
             }
         }
 

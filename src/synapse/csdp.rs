@@ -52,7 +52,10 @@ impl SynapseOps for CSDP {
             + lambda_d * post_layer.output()?.matmul(&(1.0 - pre_row)?)?)?;
         self.weights = self.weights.add(&delta)?;
 
-        // TODO: figure out biases
+        // biases are treated as connections to a neuron that is always firing every timestep
+        // TODO: figure out why this doesnt work
+        // self.biases = self.biases.add(mod_signal)?;
+
         Ok(())
     }
 
