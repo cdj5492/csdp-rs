@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // TTY: /dev/ttyACM0
     println!("Initializing Leader on /dev/ttyACM0...");
     let mut leader = LeRobot::new(
-        "/dev/ttyACM0",
+        "/dev/ttyACM2",
         [
             0.05982525072754008,
             -0.32366994624387013,
@@ -92,6 +92,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Ok(positions) = leader.get_motor_positions()
             && positions.len() == 6
         {
+            println!("{:?}", positions);
             // Write Follower
             // We map 1:1, assuming the robots are physically identical or compatible
             follower.set_goal_positions(&[
@@ -99,7 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 positions[1],
                 positions[2],
                 positions[3],
-                positions[4],
+                positions[4] + 3.141592,
                 positions[5],
             ])?;
         }
