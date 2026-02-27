@@ -4,7 +4,7 @@ use crate::layer::{Layer, LayerMetadata, LayerPosition};
 use crate::synapse::csdp::CSDP;
 use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
 use crate::visualization::{LayerVisInfo, SynapseVisInfo};
-use candle_core::{DType, Device, Result as CandleResult, Tensor};
+use candle_core::{Device, Result as CandleResult, Tensor};
 
 /// Configuration for creating a model
 pub struct ModelConfig {

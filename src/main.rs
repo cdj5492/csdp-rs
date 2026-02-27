@@ -1,6 +1,7 @@
+use candle_core::{Device, Tensor};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tqdm::Iter;
 
 mod dataset;
@@ -11,12 +12,9 @@ mod synapse;
 mod utils;
 mod visualization;
 
-use candle_core::Device;
-use models::Model;
+use models::rl_model1::RLModel1;
 use visualization::{RuntimeStats, VisualizationState};
 
-use crate::dataset::andor::AndOrDataset;
-use crate::dataset::realtime_leader::RealtimeLeader;
 use crate::robot::real_lerobot::LeRobot;
 
 fn parse_args() -> bool {
@@ -24,43 +22,81 @@ fn parse_args() -> bool {
     args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string())
 }
 
+// Action space: 12 discrete actions (2 for each of the 6 joints: +delta or -delta)
+const NUM_ACTIONS: usize = 12;
+const ACTION_DELTA: f64 = 0.05; // radians
+const NUM_JOINTS: usize = 6;
+
+// Target position we want the robot to reach
+const TARGET_POSITION: [f64; NUM_JOINTS] = [0.0, -1.0, 1.0, 0.5, 0.0, 0.5];
+
+fn get_action_tensor(action_idx: usize, device: &Device) -> Result<Tensor, Box<dyn Error>> {
+    let mut data = vec![0.0f32; NUM_ACTIONS];
+    data[action_idx] = 1.0;
+    Ok(Tensor::from_vec(data, (NUM_ACTIONS, 1), device)?)
+}
+
+// Given a state and an action index, simulate what the next state would be
+// Then compute the reward based on distance to TARGET_POSITION
+// Actions 0-5 are +delta for joints 0-5
+// Actions 6-11 are -delta for joints 0-5
+fn compute_reward(state: &[f64], action_idx: usize) -> f64 {
+    let mut next_state = state.to_vec();
+
+    let joint_idx = action_idx % NUM_JOINTS;
+    let sign = if action_idx < NUM_JOINTS { 1.0 } else { -1.0 };
+
+    next_state[joint_idx] += sign * ACTION_DELTA;
+
+    let mut dist_sq = 0.0;
+    for i in 0..NUM_JOINTS {
+        let diff = next_state[i] - TARGET_POSITION[i];
+        dist_sq += diff * diff;
+    }
+
+    // Negative distance squared => higher reward is better (closer to target)
+    -dist_sq
+}
+
+fn apply_action(
+    robot: &mut Option<LeRobot>,
+    state: &[f64],
+    action_idx: usize,
+) -> Result<(), Box<dyn Error>> {
+    if let Some(r) = robot {
+        let mut next_state = state.to_vec();
+        let joint_idx = action_idx % NUM_JOINTS;
+        let sign = if action_idx < NUM_JOINTS { 1.0 } else { -1.0 };
+        next_state[joint_idx] += sign * ACTION_DELTA;
+        r.set_goal_positions(&next_state)?;
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let device = Device::new_cuda(0).unwrap_or(Device::Cpu);
-    // let device = Device::Cpu;
     let cpu = Device::Cpu;
 
     // robot stuff
-    let follower = LeRobot::new(
+    let mut follower = LeRobot::new(
         "/dev/ttyACM0",
         [-0.0276, -1.6, 1.29, 1.1, 0.254, 0.0],
         [-1.3, -1.6, -1.94, -2.0, -1.5, -0.0122],
         [1.0, 1.7, 1.29, 1.2, 1.5, 1.1],
     )
     .ok();
-    let leader = LeRobot::new(
-        "/dev/ttyACM1",
-        [
-            0.05982525072754008,
-            -0.32366994624387013,
-            0.08743690490948142,
-            -0.018407769454627854,
-            1.6659031356438065,
-            -1.0676506283684062,
-        ],
-        [-1.77, -0.32, -3.0, -3.0, -3.0, -1.07],
-        [2.22, 3.0, 0.085, -0.069, 3.0, 0.65],
-    )
-    .ok();
 
     if follower.is_none() {
-        println!("No physical follower robot connected");
+        println!("No physical follower robot connected. Will run simulation mode.");
     }
-    if leader.is_none() {
-        println!("No physical leader robot connected");
+    if let Some(r) = &mut follower {
+        r.enable()?;
     }
 
-    let n_epochs = 100;
-    let n_timesteps = 40; // number of simulated timesteps per iteration
+    let n_episodes = 100;
+    let n_steps_per_episode = 10;
+    let epochs_per_episode = 5;
+    let n_timesteps = 40; // network timesteps per forward pass
     let dt = 0.1;
     let visualize = parse_args();
 
@@ -70,21 +106,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
     println!("Use --visualize or -v flag to enable visualization");
 
-    // simple XOR dataset
-    // let ds = XorDataset::new(&device)?;
-
-    // simple AND-OR dataset
-    let ds = AndOrDataset::new(&device)?;
-
-    // test dataset collecting realtime data from robot
-    // let mut ds = RealtimeLeader::new(
-    //     leader.expect("Realtime leader dataset requires leader to be connected"),
-    //     5,
-    //     device.clone(),
-    // );
-
-    // let mut model = Model::new(2, 1, vec![256, 512, 256], &device, dt).unwrap();
-    let mut model = Model::new(2, 1, vec![256, 512, 256], &device, dt).unwrap();
+    // input size: 6 (joint positions), action size: 12 (one-hot)
+    let mut model = RLModel1::new(NUM_JOINTS, NUM_ACTIONS, vec![256, 128], &device, dt)
+        .expect("Failed to create RLModel1");
 
     println!(
         "layers len: {}, num_synapses: {}",
@@ -94,7 +118,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start visualization if requested
     let vis_handle = if visualize {
-        let vis_state = Arc::new(Mutex::new(VisualizationState::new(n_epochs)));
+        let vis_state = Arc::new(Mutex::new(VisualizationState::new(n_episodes)));
 
         // Initialize model structure
         if let Ok(mut state) = vis_state.lock() {
@@ -116,124 +140,135 @@ fn main() -> Result<(), Box<dyn Error>> {
         None
     };
 
-    let mut iteration = 0;
+    let mut total_iteration = 0;
     let start_time = Instant::now();
 
-    // training loop: unsupervised Hebbian run for a few epochs:
-    // Use tqdm terminal loading bar only if visualization is disabled
-    let epoch_iter: Box<dyn Iterator<Item = usize>> = if visualize {
-        Box::new(1..=n_epochs)
+    let episode_iter: Box<dyn Iterator<Item = usize>> = if visualize {
+        Box::new(1..=n_episodes)
     } else {
-        Box::new((1..=n_epochs).tqdm())
+        Box::new((1..=n_episodes).tqdm())
     };
 
-    for epoch in epoch_iter {
-        let mut epoch_spike_history: Option<Vec<Vec<f32>>> = None;
-        if let Some((_, ref vis_state)) = vis_handle
-            && let Ok(state) = vis_state.lock()
-            && state.selected_layer_id.is_some()
-            && epoch % 5 == 0
-        {
-            epoch_spike_history = Some(Vec::new());
+    // Keep track of our simulated state if robot is not connected
+    let mut sim_state = vec![0.0; NUM_JOINTS];
+
+    for episode in episode_iter {
+        println!("starting episode {}", episode);
+
+        // Reset environment
+        if let Some(r) = &mut follower {
+            r.go_to_home_positions()?;
         }
+        sim_state.fill(0.0);
+        std::thread::sleep(Duration::from_millis(500)); // let robot settle
 
-        for (input, label, &positive) in ds.iter() {
-            // let mut iter = ds.iter();
-            // while let Some(Ok((input, label, positive))) = iter.next() {
-            //     let input = &input;
-            //     let label = &label;
+        let mut episode_data = Vec::new();
 
-            // Check for pause state
+        model.disable_learning(); // inference mode
+
+        for step in 0..n_steps_per_episode {
+            // Get state
+            let current_state = if let Some(r) = &mut follower {
+                r.get_motor_positions()?
+            } else {
+                sim_state.clone()
+            };
+
+            let state_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();
+            let state_tensor = Tensor::from_vec(state_f32, (NUM_JOINTS, 1), &device)?;
+
+            let mut step_actions = Vec::new();
+            let mut best_activity = -1.0;
+            let mut best_action = 0;
+
+            // Try all actions
+            for a in 0..NUM_ACTIONS {
+                let action_tensor = get_action_tensor(a, &device)?;
+                let activity = model.process(&state_tensor, &action_tensor, n_timesteps)?;
+                let reward = compute_reward(&current_state, a);
+
+                step_actions.push((a, action_tensor, reward));
+
+                if activity > best_activity {
+                    best_activity = activity;
+                    best_action = a;
+                }
+            }
+
+            println!("best action: {}", best_action);
+
+            // Execute best action
+            apply_action(&mut follower, &current_state, best_action)?;
+            if follower.is_none() {
+                // update sim state
+                let sign = if best_action < NUM_JOINTS { 1.0 } else { -1.0 };
+                sim_state[best_action % NUM_JOINTS] += sign * ACTION_DELTA;
+            }
+            std::thread::sleep(Duration::from_millis(100)); // give some time for action to take effect physically
+
+            // Sort actions by reward (ascending)
+            step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+
+            // Assign Ytype proportional to position
+            let num_choices = step_actions.len() as f32;
+            for (i, (_a, action_tensor, _reward)) in step_actions.into_iter().enumerate() {
+                // Ytype between 0.0 (worst) and 1.0 (best)
+                let ytype = i as f32 / (num_choices - 1.0);
+                episode_data.push((state_tensor.clone(), action_tensor, ytype));
+            }
+
+            // Visualization check during inference
             if let Some((_, ref vis_state)) = vis_handle {
                 loop {
                     let is_paused = vis_state
                         .try_lock()
                         .map(|state| state.is_paused)
                         .unwrap_or(false);
-
                     if !is_paused {
                         break;
                     }
-
-                    // Sleep briefly while paused to avoid busy-waiting
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(Duration::from_millis(100));
                 }
             }
+        } // end of inference steps
 
-            iteration += 1;
+        // Train on collected episode data
+        model.enable_learning();
 
-            for layer in model.layers.iter_mut() {
-                layer.set_positive_sample(positive);
-            }
+        for _epoch in 0..epochs_per_episode {
+            for (state_t, action_t, ytype) in &episode_data {
+                total_iteration += 1;
 
-            // Run one processing cycle
-            model.reset()?;
-            for _t in 0..n_timesteps {
-                // println!("label: {}", label);
-                model.step(input, Some(label))?;
+                for layer in model.layers.iter_mut() {
+                    layer.set_positive_sample(*ytype);
+                }
 
-                if let Some(history) = epoch_spike_history.as_mut()
-                    && let Some((_, ref vis_state)) = vis_handle
-                    && let Ok(state) = vis_state.lock()
-                    && let Some(layer_id) = state.selected_layer_id
-                    && let Ok(activity) = model.get_layer_activity(layer_id)
+                model.process(state_t, action_t, n_timesteps)?;
+
+                // Update visualization snapshot every 20 iterations during training
+                if let Some((_, ref vis_state)) = vis_handle
+                    && total_iteration % 20 == 0
+                    && let Ok(mut state) = vis_state.try_lock()
                 {
-                    history.push(activity);
+                    if let Ok(snapshot) = model.get_visualization_snapshot() {
+                        state.update_from_snapshot(snapshot);
+                    }
+                    let elapsed = start_time.elapsed().as_secs_f32();
+                    let speed = if elapsed > 0.0 {
+                        total_iteration as f32 / elapsed
+                    } else {
+                        0.0
+                    };
+                    state.runtime_stats = RuntimeStats {
+                        epoch: episode,
+                        iteration: total_iteration,
+                        timestep: total_iteration * n_timesteps,
+                        iterations_per_second: speed,
+                    }
                 }
             }
-
-            // Update visualization snapshot every 10 iterations
-            if let Some((_, ref vis_state)) = vis_handle
-                && iteration % 10 == 0
-                && let Ok(mut state) = vis_state.try_lock()
-            {
-                // Update model structure (preserving animated positions)
-                if let Ok(snapshot) = model.get_visualization_snapshot() {
-                    state.update_from_snapshot(snapshot);
-                }
-
-                // Update runtime stats
-                let elapsed = start_time.elapsed().as_secs_f32();
-                let speed = if elapsed > 0.0 {
-                    iteration as f32 / elapsed
-                } else {
-                    0.0
-                };
-
-                state.runtime_stats = RuntimeStats {
-                    epoch,
-                    iteration,
-                    timestep: iteration * n_timesteps,
-                    iterations_per_second: speed,
-                };
-            }
-
-            // Print progress
-            if epoch % 50 == 0 {
-                // for (input, _label, &positive) in ds.iter() {
-                //     if let Ok(out) = model.process(input, n_timesteps, false, &device) {
-                //         println!(
-                //             "Epoch {}: Input: {}, Positive?: {}, Output: {}, Hidden0 activity: {}",
-                //             epoch,
-                //             input.to_device(&cpu)?,
-                //             positive,
-                //             out.final_output.to_device(&cpu)?,
-                //             model.get_layer_activity(2)?.iter().sum::<f32>()
-                //         );
-                //     }
-                // }
-                //
-                // // println!("weights: {:?}", model.synapses[0].synapse.weight_stats());
-            }
         }
-
-        if let Some(history) = epoch_spike_history
-            && let Some((_, ref vis_state)) = vis_handle
-            && let Ok(mut state) = vis_state.lock()
-        {
-            state.epoch_spike_history = Some((epoch, history));
-        }
-    }
+    } // end of episodes
 
     // Signal visualization to close and wait for thread
     if let Some((handle, vis_state)) = vis_handle {
@@ -242,6 +277,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             state.should_close = true;
         }
         let _ = handle.join();
+    }
+
+    if let Some(mut r) = follower {
+        r.disable().unwrap_or(());
     }
 
     println!("Done");

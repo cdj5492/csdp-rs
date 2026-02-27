@@ -6,8 +6,8 @@ use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
 use crate::visualization::{LayerVisInfo, SynapseVisInfo};
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
+pub mod rl_model1;
 mod robot_model;
-mod rl_model1;
 
 /// Configuration for creating a model
 pub struct ModelConfig {
