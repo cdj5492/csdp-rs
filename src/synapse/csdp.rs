@@ -94,4 +94,31 @@ impl SynapseOps for CSDP {
             num_weights,
         })
     }
+
+    fn get_state(&self) -> CandleResult<std::collections::HashMap<String, Tensor>> {
+        let mut state = std::collections::HashMap::new();
+        state.insert("weights".to_string(), self.weights.clone());
+        state.insert("biases".to_string(), self.biases.clone());
+        Ok(state)
+    }
+
+    fn set_state(&mut self, state: &std::collections::HashMap<String, Tensor>) -> CandleResult<()> {
+        if let Some(w) = state.get("weights") {
+            self.weights = w.clone();
+        } else {
+            return Err(candle_core::Error::Msg(
+                "weights tensor missing from state".to_string(),
+            ));
+        }
+
+        if let Some(b) = state.get("biases") {
+            self.biases = b.clone();
+        } else {
+            return Err(candle_core::Error::Msg(
+                "biases tensor missing from state".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }

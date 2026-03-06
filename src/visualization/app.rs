@@ -56,6 +56,18 @@ impl NeuralNetworkVisualizerApp {
             ui.label(format!("Timestep: {}", stats.timestep));
             ui.separator();
             ui.label(format!("Speed: {:.1} it/s", stats.iterations_per_second));
+
+            ui.separator();
+            if ui.button("💾 Save Latest").clicked() {
+                if let Ok(mut state) = self.vis_state.try_lock() {
+                    state.save_requested = true;
+                }
+            }
+            if ui.button("📂 Load Local").clicked() {
+                if let Ok(mut state) = self.vis_state.try_lock() {
+                    state.load_requested = true;
+                }
+            }
         });
 
         ui.add_space(5.0);

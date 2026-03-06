@@ -16,6 +16,8 @@ pub struct VisualizationState {
     pub epoch_spike_history: Option<(usize, Vec<Vec<f32>>)>,
     pub environment_state: Option<Vec<f64>>,
     pub epoch_rewards: Vec<(usize, f32)>,
+    pub save_requested: bool,
+    pub load_requested: bool,
 }
 
 /// Structure of the model for visualization
@@ -75,6 +77,8 @@ impl VisualizationState {
             epoch_spike_history: None,
             environment_state: None,
             epoch_rewards: Vec::new(),
+            save_requested: false,
+            load_requested: false,
         }
     }
 }

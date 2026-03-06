@@ -29,6 +29,12 @@ pub trait SynapseOps: Send + Sync {
 
     /// Get weight statistics for visualization
     fn weight_stats(&self) -> CandleResult<WeightStats>;
+
+    /// Extract the synapse state (e.g., weights and biases) as named tensors for saving
+    fn get_state(&self) -> CandleResult<std::collections::HashMap<String, Tensor>>;
+
+    /// Restore the synapse state from named tensors
+    fn set_state(&mut self, state: &std::collections::HashMap<String, Tensor>) -> CandleResult<()>;
 }
 
 /// Statistics about synapse weights for visualization

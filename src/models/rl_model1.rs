@@ -439,4 +439,43 @@ impl RLModel1 {
 
         Ok(total_activity)
     }
+
+    /// Save the model parameters to a safetensors file
+    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> CandleResult<()> {
+        let mut tensor_map = std::collections::HashMap::new();
+
+        for syn_conn in &self.synapses {
+            let state = syn_conn.synapse.get_state()?;
+            let prefix = format!("synapse_{}_", syn_conn.metadata.id);
+            for (key, tensor) in state {
+                tensor_map.insert(format!("{}{}", prefix, key), tensor);
+            }
+        }
+
+        candle_core::safetensors::save(&tensor_map, path)?;
+        Ok(())
+    }
+
+    /// Load the model parameters from a safetensors file
+    pub fn load<P: AsRef<std::path::Path>>(&mut self, path: P) -> CandleResult<()> {
+        let loaded_tensors = candle_core::safetensors::load(path, &self.device)?;
+
+        for syn_conn in self.synapses.iter_mut() {
+            let prefix = format!("synapse_{}_", syn_conn.metadata.id);
+            let mut state = std::collections::HashMap::new();
+
+            for (key, tensor) in &loaded_tensors {
+                if key.starts_with(&prefix) {
+                    let local_key = key.strip_prefix(&prefix).unwrap().to_string();
+                    state.insert(local_key, tensor.clone());
+                }
+            }
+
+            if !state.is_empty() {
+                syn_conn.synapse.set_state(&state)?;
+            }
+        }
+
+        Ok(())
+    }
 }
