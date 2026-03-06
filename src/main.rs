@@ -74,8 +74,8 @@ fn apply_action(
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let device = Device::new_cuda(0).unwrap_or(Device::Cpu);
-    let cpu = Device::Cpu;
+    // let device = Device::new_cuda(0).unwrap_or(Device::Cpu);
+    let device = Device::Cpu;
 
     // robot stuff
     let mut follower = LeRobot::new(
