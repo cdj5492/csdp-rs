@@ -363,7 +363,6 @@ impl NeuralNetworkVisualizerApp {
         }
     }
 
-
     fn draw_synapse_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
         ui.heading("Synapse Details");
         ui.separator();
@@ -583,6 +582,159 @@ impl eframe::App for NeuralNetworkVisualizerApp {
         egui::SidePanel::right("details_panel")
             .min_width(200.0)
             .show(ctx, |ui| {
+                if let Ok(state) = self.vis_state.try_lock() {
+                    if let Some(env_state) = &state.environment_state {
+                        ui.heading("Environment State");
+                        ui.separator();
+
+                        let (response, painter) =
+                            ui.allocate_painter(Vec2::new(180.0, 180.0), egui::Sense::hover());
+                        let rect = response.rect;
+
+                        if env_state.len() == 4 {
+                            // Grid visualization
+                            let px = env_state[0] as f32;
+                            let py = env_state[1] as f32;
+                            let gx = env_state[2] as f32;
+                            let gy = env_state[3] as f32;
+
+                            // Draw grid
+                            let grid_size = 50.0;
+                            let cell_w = rect.width() / grid_size;
+                            let cell_h = rect.height() / grid_size;
+
+                            painter.rect_filled(rect, 0.0, Color32::from_gray(30));
+
+                            // Draw goal
+                            let goal_rect = Rect::from_min_size(
+                                rect.min + Vec2::new(gx * cell_w, gy * cell_h),
+                                Vec2::new(cell_w, cell_h),
+                            );
+                            painter.rect_filled(goal_rect, 0.0, Color32::GREEN);
+
+                            // Draw player
+                            let player_rect = Rect::from_min_size(
+                                rect.min + Vec2::new(px * cell_w, py * cell_h),
+                                Vec2::new(cell_w, cell_h),
+                            );
+                            painter.rect_filled(player_rect, 0.0, Color32::WHITE);
+
+                            ui.label(format!("Player: ({}, {})", px, py));
+                            ui.label(format!("Goal: ({}, {})", gx, gy));
+                        } else if env_state.len() == 6 {
+                            // Robot arm visualization (moving bars)
+                            painter.rect_filled(rect, 0.0, Color32::from_gray(30));
+
+                            for (i, &joint_pos) in env_state.iter().enumerate() {
+                                let bar_y = rect.min.y + 10.0 + i as f32 * 25.0;
+                                let bar_w = rect.width() - 20.0;
+
+                                // Background bar
+                                painter.rect_filled(
+                                    Rect::from_min_size(
+                                        Pos2::new(rect.min.x + 10.0, bar_y),
+                                        Vec2::new(bar_w, 15.0),
+                                    ),
+                                    0.0,
+                                    Color32::from_gray(60),
+                                );
+
+                                // Normalize joint position to 0-1 (approximate boundaries -3 to 3 radians)
+                                let normalized_pos =
+                                    ((joint_pos as f32 + 3.0) / 6.0).clamp(0.0, 1.0);
+
+                                // Fill bar
+                                painter.rect_filled(
+                                    Rect::from_min_size(
+                                        Pos2::new(rect.min.x + 10.0, bar_y),
+                                        Vec2::new(bar_w * normalized_pos, 15.0),
+                                    ),
+                                    0.0,
+                                    Color32::from_rgb(100, 150, 250),
+                                );
+
+                                painter.text(
+                                    Pos2::new(rect.min.x + 15.0, bar_y + 1.0),
+                                    egui::Align2::LEFT_TOP,
+                                    format!("Joint {}: {:.2}", i, joint_pos),
+                                    egui::FontId::proportional(10.0),
+                                    Color32::WHITE,
+                                );
+                            }
+                        } else {
+                            // Generic raw float display
+                            ui.label(format!("Generic Env State (dim {}):", env_state.len()));
+                            for (i, val) in env_state.iter().enumerate() {
+                                ui.label(format!("{}: {:.3}", i, val));
+                            }
+                        }
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                    }
+
+                    if !state.epoch_rewards.is_empty() {
+                        ui.heading("Reward History");
+                        ui.separator();
+
+                        let (response, painter) =
+                            ui.allocate_painter(Vec2::new(180.0, 100.0), egui::Sense::hover());
+                        let rect = response.rect;
+
+                        painter.rect_filled(rect, 0.0, Color32::from_gray(30));
+
+                        let rewards = &state.epoch_rewards;
+
+                        let min_reward = rewards
+                            .iter()
+                            .map(|(_, r)| *r)
+                            .fold(f32::INFINITY, f32::min);
+                        let max_reward = rewards
+                            .iter()
+                            .map(|(_, r)| *r)
+                            .fold(f32::NEG_INFINITY, f32::max);
+
+                        let range = (max_reward - min_reward).max(0.1);
+                        let min_y = min_reward - range * 0.1;
+                        let max_y = max_reward + range * 0.1;
+                        let val_range = max_y - min_y;
+
+                        let max_x = rewards.last().unwrap().0 as f32;
+                        let min_x = rewards.first().unwrap().0 as f32;
+                        let x_range = (max_x - min_x).max(1.0);
+
+                        let mut points = Vec::new();
+                        for &(epoch, reward) in rewards {
+                            let norm_x = (epoch as f32 - min_x) / x_range;
+                            let norm_y = 1.0 - (reward - min_y) / val_range;
+
+                            points.push(Pos2::new(
+                                rect.min.x + norm_x * rect.width(),
+                                rect.min.y + norm_y * rect.height(),
+                            ));
+                        }
+
+                        if points.len() > 1 {
+                            let mut prev = points[0];
+                            for &curr in points.iter().skip(1) {
+                                painter.line_segment(
+                                    [prev, curr],
+                                    Stroke::new(1.5, Color32::from_rgb(100, 250, 100)),
+                                );
+                                prev = curr;
+                            }
+                        } else if points.len() == 1 {
+                            painter.circle_filled(points[0], 2.0, Color32::from_rgb(100, 250, 100));
+                        }
+
+                        let latest_reward = rewards.last().unwrap().1;
+                        ui.label(format!("Latest Reward: {:.1}", latest_reward));
+
+                        ui.add_space(10.0);
+                        ui.separator();
+                    }
+                }
+
                 self.draw_layer_details(ui, &model_structure);
                 ui.add_space(10.0);
                 ui.separator();

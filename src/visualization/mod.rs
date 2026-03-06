@@ -14,6 +14,8 @@ pub struct VisualizationState {
     pub positions_initialized: bool,
     pub selected_layer_id: Option<LayerId>,
     pub epoch_spike_history: Option<(usize, Vec<Vec<f32>>)>,
+    pub environment_state: Option<Vec<f64>>,
+    pub epoch_rewards: Vec<(usize, f32)>,
 }
 
 /// Structure of the model for visualization
@@ -71,6 +73,8 @@ impl VisualizationState {
             positions_initialized: false,
             selected_layer_id: None,
             epoch_spike_history: None,
+            environment_state: None,
+            epoch_rewards: Vec::new(),
         }
     }
 }
