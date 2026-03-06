@@ -1,14 +1,14 @@
 use super::Algorithm;
 use crate::environment::Environment;
-use crate::models::rl_model1::RLModel1;
+use crate::models::rl_model2::RLModel2;
 use crate::visualization::{RuntimeStats, VisualizationState};
 use candle_core::{Device, Tensor};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub struct Algorithm1 {
-    pub model: RLModel1,
+pub struct Algorithm2 {
+    pub model: RLModel2,
     pub n_episodes: usize,
     pub n_steps_per_episode: usize,
     pub epochs_per_episode: usize,
@@ -16,7 +16,7 @@ pub struct Algorithm1 {
     pub device: Device,
 }
 
-impl Algorithm1 {
+impl Algorithm2 {
     pub fn new(
         state_size: usize,
         action_size: usize,
@@ -24,8 +24,10 @@ impl Algorithm1 {
         dt: f32,
         device: Device,
     ) -> Result<Self, Box<dyn Error>> {
-        let model = RLModel1::new(state_size, action_size, hidden_sizes, &device, dt)
-            .expect("Failed to create RLModel1");
+        let input_size = state_size * 2 + action_size;
+        let context_size = 1;
+        let model = RLModel2::new(input_size, context_size, hidden_sizes, &device, dt)
+            .expect("Failed to create RLModel2");
 
         Ok(Self {
             model,
@@ -48,7 +50,7 @@ impl Algorithm1 {
     }
 }
 
-impl Algorithm for Algorithm1 {
+impl Algorithm for Algorithm2 {
     fn run(
         &mut self,
         env: &mut dyn Environment,
@@ -66,7 +68,9 @@ impl Algorithm for Algorithm1 {
             env.reset()?;
             std::thread::sleep(Duration::from_millis(500)); // wait for environment to settle
 
-            let mut episode_data = Vec::new();
+            let mut episode_states = Vec::new();
+            let mut episode_actions = Vec::new();
+            let mut episode_rewards = Vec::new();
 
             self.model.disable_learning(); // inference mode
 
@@ -76,20 +80,26 @@ impl Algorithm for Algorithm1 {
                 let current_state = env.get_state()?;
 
                 let state_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();
-                let state_tensor = Tensor::from_vec(state_f32, (state_size, 1), &self.device)?;
+                episode_states.push(state_f32.clone());
 
-                let mut step_actions = Vec::new();
                 let mut best_activity = -1.0;
                 let mut best_action = 0;
 
                 for a in 0..action_size {
-                    let action_tensor = self.get_action_tensor(a, action_size)?;
-                    let activity =
-                        self.model
-                            .process(&state_tensor, &action_tensor, self.n_timesteps)?;
-                    let reward = env.evaluate_action(&current_state, a);
+                    // Create combined input: [x_t, x_{t+M}, a]
+                    let mut input_vec = Vec::with_capacity(state_size * 2 + action_size);
+                    input_vec.extend(state_f32.iter()); // Fix: use iter() to avoid moving state_f32
+                    input_vec.extend(vec![0.0f32; state_size]); // x_{t+M} is zeroed out during inference
+                    for j in 0..action_size {
+                        input_vec.push(if j == a { 1.0 } else { 0.0 });
+                    }
 
-                    step_actions.push((a, action_tensor, reward));
+                    let input_tensor = Tensor::from_vec(
+                        input_vec,
+                        (state_size * 2 + action_size, 1),
+                        &self.device,
+                    )?;
+                    let activity = self.model.process(&input_tensor, self.n_timesteps)?;
 
                     if activity > best_activity {
                         best_activity = activity;
@@ -98,9 +108,12 @@ impl Algorithm for Algorithm1 {
                 }
 
                 println!("best action: {}", best_action);
+                let reward = env.evaluate_action(&current_state, best_action);
 
-                // Add the true reward for the chosen action to the episode's total reward
-                total_reward += env.evaluate_action(&current_state, best_action);
+                episode_actions.push(best_action);
+                episode_rewards.push(reward);
+
+                total_reward += reward;
 
                 env.apply_action(best_action)?;
                 std::thread::sleep(Duration::from_millis(100)); // give some time for action to take effect
@@ -111,17 +124,6 @@ impl Algorithm for Algorithm1 {
                         let env_state = env.get_state()?;
                         state.environment_state = Some(env_state);
                     }
-                }
-
-                // Sort actions by reward (ascending)
-                step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
-
-                // Assign Ytype proportional to position
-                let num_choices = step_actions.len() as f32;
-                for (i, (_a, action_tensor, _reward)) in step_actions.into_iter().enumerate() {
-                    // Ytype between 0.0 (worst) and 1.0 (best)
-                    let ytype = i as f32 / (num_choices - 1.0);
-                    episode_data.push((state_tensor.clone(), action_tensor, ytype));
                 }
 
                 // Visualization check during inference
@@ -210,16 +212,90 @@ impl Algorithm for Algorithm1 {
                 }
             }
 
+            // 2. Data pairing and augmentation
+            let mut train_data = Vec::new(); // (input_tensor_vec, label, reward_normalized)
+            let mut rng = rand::thread_rng();
+            let n_states = episode_states.len();
+
+            use rand::Rng;
+
+            println!("Pairing and augmenting data...");
+            if n_states > 1 {
+                for t in 0..n_states - 1 {
+                    let max_m = n_states - t;
+                    let m = rng.gen_range(1..max_m);
+
+                    let s_t = &episode_states[t];
+                    let s_t_plus_m = &episode_states[t + m];
+                    let a_t = episode_actions[t];
+                    let r_t = episode_rewards[t] as f32;
+
+                    // Positive sample
+                    let mut pos_input = Vec::with_capacity(state_size * 2 + action_size);
+                    pos_input.extend(s_t.clone());
+                    pos_input.extend(s_t_plus_m.clone());
+                    for j in 0..action_size {
+                        pos_input.push(if j == a_t { 1.0 } else { 0.0 });
+                    }
+                    train_data.push((pos_input, 1.0f32, r_t));
+
+                    // Negative sample 1: random future state
+                    let neg_m = rng.gen_range(0..n_states);
+                    let mut neg_input1 = Vec::with_capacity(state_size * 2 + action_size);
+                    neg_input1.extend(s_t.clone());
+                    neg_input1.extend(episode_states[neg_m].clone());
+                    for j in 0..action_size {
+                        neg_input1.push(if j == a_t { 1.0 } else { 0.0 });
+                    }
+                    train_data.push((neg_input1, 0.0f32, 1.0f32)); // r_t ignored for Y=0
+
+                    // Negative sample 2: random valid action
+                    let mut a_star = rng.gen_range(0..action_size);
+                    if a_star == a_t {
+                        a_star = (a_star + 1) % action_size;
+                    }
+                    let mut neg_input2 = Vec::with_capacity(state_size * 2 + action_size);
+                    neg_input2.extend(s_t.clone());
+                    neg_input2.extend(s_t_plus_m.clone());
+                    for j in 0..action_size {
+                        neg_input2.push(if j == a_star { 1.0 } else { 0.0 });
+                    }
+                    train_data.push((neg_input2, 0.0f32, 1.0f32));
+                }
+
+                // 3. Reward scaling (Sigmoid)
+                for i in 0..train_data.len() {
+                    let r = train_data[i].2;
+                    if train_data[i].1 > 0.5 {
+                        let sig_r = 1.0 / (1.0 + (-r).exp());
+                        train_data[i].2 = sig_r;
+                    }
+                }
+            }
+
             // Train on collected episode data
             self.model.enable_learning();
 
             for _epoch in 0..self.epochs_per_episode {
-                for (state_t, action_t, ytype) in &episode_data {
+                println!(
+                    "Training epoch {} with {} samples",
+                    _epoch,
+                    train_data.len()
+                );
+                for (input_vec, label, reward) in &train_data {
                     total_iteration += 1;
 
+                    let input_tensor = Tensor::from_vec(
+                        input_vec.clone(),
+                        (state_size * 2 + action_size, 1),
+                        &self.device,
+                    )?;
+                    let context_tensor = Tensor::from_vec(vec![*label], (1, 1), &self.device)?;
+
                     for layer in self.model.layers.iter_mut() {
-                        layer.set_positive_sample(*ytype);
+                        layer.set_positive_sample(*label);
                     }
+                    self.model.set_reward(*reward);
 
                     // For spike plot history
                     let mut spike_history = Vec::new();
@@ -229,7 +305,8 @@ impl Algorithm for Algorithm1 {
 
                     self.model.reset()?;
                     for _ in 0..self.n_timesteps {
-                        self.model.step(state_t, action_t)?;
+                        self.model.step(&input_tensor, Some(&context_tensor))?;
+
                         if let Some(layer_id) = record_layer {
                             if let Ok(activity) = self.model.get_layer_activity(layer_id) {
                                 spike_history.push(activity);

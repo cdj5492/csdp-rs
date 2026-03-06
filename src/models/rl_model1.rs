@@ -1,5 +1,6 @@
 use crate::layer::bernoulli::BernoulliLayer;
 use crate::layer::lif::LIFLayer;
+use crate::layer::mod_signal::standard::StandardModSignal;
 use crate::layer::{Layer, LayerMetadata, LayerPosition};
 use crate::synapse::csdp::CSDP;
 use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
@@ -211,7 +212,14 @@ impl RLModel1 {
                 trace_tau,
                 name,
             } => {
-                let layer = LIFLayer::new(*size, *tau, *g_thr, *thresh_lambda, *trace_tau, device)?;
+                let mod_signal = Box::new(StandardModSignal::new(
+                    *size,
+                    *trace_tau,
+                    1.0,
+                    (*size as f32) / 2.0, // approx omega
+                    device,
+                )?);
+                let layer = LIFLayer::new(*size, *tau, *g_thr, *thresh_lambda, mod_signal, device)?;
                 let name = name.clone().unwrap_or_else(|| format!("Layer_{}", id));
                 (
                     Box::new(layer) as Box<dyn Layer>,

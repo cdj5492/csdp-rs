@@ -45,11 +45,13 @@ impl SynapseOps for CSDP {
 
         // synaptic decay factor
         // TODO: put at top level
-        let lambda_d = 0.05;
+        let lambda_d = 0.0005;
 
         // outer product (should be same shape as weight matrix)
-        let delta = (mod_signal.matmul(&pre_row)?
-            + lambda_d * post_layer.output()?.matmul(&(1.0 - pre_row)?)?)?;
+        // let delta = (mod_signal.matmul(&pre_row)?
+        //     + lambda_d * post_layer.output()?.matmul(&(1.0 - pre_row)?)?)?;
+        let delta = (mod_signal.matmul(&pre_row)? - (lambda_d * self.weights.clone())?)?;
+
         self.weights = self.weights.add(&delta)?;
 
         // biases are treated as connections to a neuron that is always firing every timestep

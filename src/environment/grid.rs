@@ -56,7 +56,12 @@ impl Environment for GridEnvironment {
 
         let dx = (nx - self.goal_x) as f64;
         let dy = (ny - self.goal_y) as f64;
-        -(dx * dx + dy * dy)
+        let distance = (dx * dx + dy * dy).sqrt();
+        
+        let max_dist = (49.0f64.powi(2) + 49.0f64.powi(2)).sqrt();
+        
+        // Maps 0 distance to 5.0 and max_dist to -5.0
+        5.0 - (distance / max_dist) * 10.0
     }
 
     fn apply_action(&mut self, action_idx: usize) -> Result<(), Box<dyn Error>> {

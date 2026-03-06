@@ -1,9 +1,10 @@
-use crate::layer::{Layer, ModSignal};
+use crate::layer::Layer;
+use crate::layer::mod_signal::ModSignalGenerator;
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct LIFLayer {
-    mod_signal: ModSignal,
+    mod_signal: Box<dyn ModSignalGenerator>,
     /// input currents
     inputs: Tensor,
     /// membrane potential
@@ -18,6 +19,7 @@ pub struct LIFLayer {
     tau: f32,
     size: usize,
     current_label: f32,
+    current_reward: f32,
 }
 
 impl LIFLayer {
@@ -26,21 +28,14 @@ impl LIFLayer {
         tau: f32,
         thresh: f32,
         thresh_lambda: f32,
-        trace_tau: f32,
+        mod_signal_generator: Box<dyn ModSignalGenerator>,
         device: &Device,
     ) -> CandleResult<Self> {
         let inputs = Tensor::zeros((size, 1), DType::F32, device)?;
         let state = Tensor::zeros((size, 1), DType::F32, device)?;
         let spikes = Tensor::zeros((size, 1), DType::F32, device)?;
-        let max_z = 1.0; // not much of a reason to have it not be 1
         Ok(Self {
-            mod_signal: ModSignal::new(
-                size,
-                trace_tau,
-                max_z,
-                (size as f32) * max_z * max_z / 2.0,
-                device,
-            )?,
+            mod_signal: mod_signal_generator,
             inputs,
             state,
             spikes,
@@ -49,6 +44,7 @@ impl LIFLayer {
             thresh_lambda,
             size,
             current_label: 1.0,
+            current_reward: 0.0,
         })
     }
 }
@@ -72,7 +68,8 @@ impl Layer for LIFLayer {
                 - 1.0);
 
         let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
-        self.mod_signal.calc_mod_signal(&self.spikes, &lab, dt)?;
+        self.mod_signal
+            .calc_mod_signal(&self.spikes, &lab, self.current_reward, dt)?;
 
         Ok(())
     }
@@ -82,7 +79,7 @@ impl Layer for LIFLayer {
     }
 
     fn get_mod_signal(&self) -> &Tensor {
-        &self.mod_signal.mod_signal
+        self.mod_signal.get_mod_signal()
     }
 
     fn output(&self) -> CandleResult<&Tensor> {
@@ -114,5 +111,9 @@ impl Layer for LIFLayer {
 
     fn set_positive_sample(&mut self, label: f32) {
         self.current_label = label;
+    }
+
+    fn set_reward(&mut self, reward: f32) {
+        self.current_reward = reward;
     }
 }

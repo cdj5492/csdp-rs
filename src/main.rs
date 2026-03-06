@@ -13,7 +13,7 @@ mod utils;
 mod visualization;
 
 use algorithms::Algorithm;
-use algorithms::algorithm1::Algorithm1;
+use algorithms::algorithm2::Algorithm2;
 use environment::Environment;
 use visualization::VisualizationState;
 
@@ -58,8 +58,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let action_size = env.action_size();
     let dt = 0.1;
 
-    let mut algo = Algorithm1::new(state_size, action_size, vec![256, 128], dt, device)
-        .expect("Failed to create Algorithm1");
+    let mut algo = Algorithm2::new(state_size, action_size, vec![256, 128], dt, device)
+        .expect("Failed to create Algorithm2");
 
     println!(
         "layers len: {}, num_synapses: {}",

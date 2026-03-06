@@ -1,4 +1,5 @@
 pub mod algorithm1;
+pub mod algorithm2;
 
 use crate::environment::Environment;
 use crate::visualization::VisualizationState;

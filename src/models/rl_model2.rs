@@ -1,15 +1,11 @@
 use crate::layer::bernoulli::BernoulliLayer;
 use crate::layer::lif::LIFLayer;
-use crate::layer::mod_signal::standard::StandardModSignal;
+use crate::layer::mod_signal::reward_modulated::RewardModulatedModSignal;
 use crate::layer::{Layer, LayerMetadata, LayerPosition};
 use crate::synapse::csdp::CSDP;
 use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
 use crate::visualization::{LayerVisInfo, SynapseVisInfo};
-use candle_core::{DType, Device, Result as CandleResult, Tensor};
-
-pub mod rl_model1;
-pub mod rl_model2;
-mod robot_model;
+use candle_core::{Device, Result as CandleResult, Tensor};
 
 /// Configuration for creating a model
 pub struct ModelConfig {
@@ -51,7 +47,7 @@ pub enum SynapseType {
     CSDP,
 }
 
-pub struct Model {
+pub struct RLModel2 {
     pub layers: Vec<Box<dyn Layer>>,
     pub layer_metadata: Vec<LayerMetadata>,
     pub synapses: Vec<SynapseConnection>,
@@ -60,29 +56,11 @@ pub struct Model {
     pub device: Device,
 }
 
-/// Legacy Model structure (kept for reference, can be removed)
-pub struct _OldModel {
-    pub input_layer: BernoulliLayer,
-    pub hidden_layers: Vec<LIFLayer>,
-    pub output_layer: LIFLayer,
-    pub hidden_synapses_forward: Vec<CSDP>,
-    pub hidden_synapses_backward: Vec<CSDP>,
-    pub output_synapses: Vec<CSDP>,
-    pub is_learning: bool,
-    pub dt: f32,
-}
-
-/// data returned as output from prcess function
-pub struct ProcessOutput {
-    pub output_activity: Vec<Tensor>,
-    pub final_output: Tensor,
-}
-
-impl Model {
+impl RLModel2 {
     /// Create a new CSDP model with default configuration (backward compatible).
     pub fn new(
         input_size: usize,
-        output_size: usize,
+        context_size: usize,
         hidden_sizes: Vec<usize>,
         device: &Device,
         dt: f32,
@@ -107,10 +85,10 @@ impl Model {
             name: Some("Input".to_string()),
         });
 
-        // Context input layer (labels when in training)
+        // Context input layer
         // Index 1
         layer_configs.push(LayerConfig::Bernoulli {
-            size: output_size,
+            size: context_size,
             name: Some("Context".to_string()),
         });
 
@@ -126,17 +104,6 @@ impl Model {
                 name: Some(format!("Hidden_{}", i)),
             });
         }
-
-        // Output layer (LIF)
-        // Index (2+hidden_sizes.len())
-        layer_configs.push(LayerConfig::LIF {
-            size: output_size,
-            tau: tau_lif,
-            g_thr,
-            thresh_lambda,
-            trace_tau,
-            name: Some("Output".to_string()),
-        });
 
         // Build synapse configs (same topology as before)
         let mut synapse_configs = vec![];
@@ -164,20 +131,6 @@ impl Model {
             });
             synapse_configs.push(SynapseConfig {
                 pre_layer: i + 1,
-                post_layer: i,
-                synapse_type: SynapseType::CSDP,
-            });
-        }
-
-        for i in 2..=hidden_sizes.len() + 1 {
-            // All hidden layers to output layer, and back to hidden layer
-            synapse_configs.push(SynapseConfig {
-                pre_layer: i,
-                post_layer: 2 + hidden_sizes.len(),
-                synapse_type: SynapseType::CSDP,
-            });
-            synapse_configs.push(SynapseConfig {
-                pre_layer: 2 + hidden_sizes.len(),
                 post_layer: i,
                 synapse_type: SynapseType::CSDP,
             });
@@ -259,7 +212,7 @@ impl Model {
                 trace_tau,
                 name,
             } => {
-                let mod_signal = Box::new(StandardModSignal::new(
+                let mod_signal = Box::new(RewardModulatedModSignal::new(
                     *size,
                     *trace_tau,
                     1.0,
@@ -319,9 +272,15 @@ impl Model {
         self.is_learning = false;
     }
 
+    pub fn set_reward(&mut self, reward: f32) {
+        for layer in self.layers.iter_mut() {
+            layer.set_reward(reward);
+        }
+    }
+
     /// Run one timestep: update layers and synapses once.
     pub fn step(&mut self, input: &Tensor, context: Option<&Tensor>) -> CandleResult<()> {
-        // Reset inputs for all layers except input layer
+        // Reset inputs for all layers
         for layer in self.layers.iter_mut() {
             layer.reset_input()?;
         }
@@ -331,8 +290,8 @@ impl Model {
         self.layers[0].step(self.dt)?;
 
         // add context to second layer and step it
-        if let Some(label) = context {
-            self.layers[1].add_input(label)?;
+        if let Some(ctx) = context {
+            self.layers[1].add_input(ctx)?;
             self.layers[1].step(self.dt)?;
         }
 
@@ -378,32 +337,13 @@ impl Model {
     }
 
     /// run for T timesteps, and return collected outputs
-    pub fn process(
-        &mut self,
-        input: &Tensor,
-        timesteps: usize,
-        collect_data: bool,
-        _device: &Device,
-    ) -> CandleResult<ProcessOutput> {
-        let mut out = ProcessOutput {
-            output_activity: vec![],
-            final_output: Tensor::zeros((0, 0), DType::F32, &self.device)?,
-        };
+    pub fn process(&mut self, input: &Tensor, timesteps: usize) -> CandleResult<f32> {
         self.reset()?;
         for _ in 0..timesteps {
-            self.step(input, None)?; // no labels provided during inference
-
-            if collect_data && !self.layers.is_empty() {
-                let output = self.layers.last().unwrap().output()?;
-                out.output_activity.push(output.clone());
-            }
+            self.step(input, None)?;
         }
 
-        if !self.layers.is_empty() {
-            out.final_output = self.layers.last().unwrap().output()?.clone();
-        }
-
-        Ok(out)
+        self.get_model_activity()
     }
 
     /// Get a specific neuron's output value for visualization
@@ -496,5 +436,57 @@ impl Model {
         let output = self.layers[layer_id].output()?;
         let output_vec = output.flatten_all()?.to_vec1::<f32>()?;
         Ok(output_vec)
+    }
+
+    /// gets the total sum of output activities of all layers excluding input layers
+    pub fn get_model_activity(&self) -> CandleResult<f32> {
+        let mut total_activity = 0.0;
+
+        for layer in &self.layers {
+            let output = layer.output()?;
+            let output_vec = output.flatten_all()?.to_vec1::<f32>()?;
+            total_activity += output_vec.iter().sum::<f32>();
+        }
+
+        Ok(total_activity)
+    }
+
+    /// Save the model parameters to a safetensors file
+    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> CandleResult<()> {
+        let mut tensor_map = std::collections::HashMap::new();
+
+        for syn_conn in &self.synapses {
+            let state = syn_conn.synapse.get_state()?;
+            let prefix = format!("synapse_{}_", syn_conn.metadata.id);
+            for (key, tensor) in state {
+                tensor_map.insert(format!("{}{}", prefix, key), tensor);
+            }
+        }
+
+        candle_core::safetensors::save(&tensor_map, path)?;
+        Ok(())
+    }
+
+    /// Load the model parameters from a safetensors file
+    pub fn load<P: AsRef<std::path::Path>>(&mut self, path: P) -> CandleResult<()> {
+        let loaded_tensors = candle_core::safetensors::load(path, &self.device)?;
+
+        for syn_conn in self.synapses.iter_mut() {
+            let prefix = format!("synapse_{}_", syn_conn.metadata.id);
+            let mut state = std::collections::HashMap::new();
+
+            for (key, tensor) in &loaded_tensors {
+                if key.starts_with(&prefix) {
+                    let local_key = key.strip_prefix(&prefix).unwrap().to_string();
+                    state.insert(local_key, tensor.clone());
+                }
+            }
+
+            if !state.is_empty() {
+                syn_conn.synapse.set_state(&state)?;
+            }
+        }
+
+        Ok(())
     }
 }
