@@ -45,7 +45,7 @@ impl SynapseOps for CSDP {
 
         // synaptic decay factor
         // TODO: put at top level
-        let lambda_d = 0.0005;
+        let lambda_d = 0.00005;
 
         // outer product (should be same shape as weight matrix)
         // let delta = (mod_signal.matmul(&pre_row)?

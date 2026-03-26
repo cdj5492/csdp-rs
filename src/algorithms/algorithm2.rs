@@ -38,16 +38,6 @@ impl Algorithm2 {
             device,
         })
     }
-
-    fn get_action_tensor(
-        &self,
-        action_idx: usize,
-        action_size: usize,
-    ) -> Result<Tensor, Box<dyn Error>> {
-        let mut data = vec![0.0f32; action_size];
-        data[action_idx] = 1.0;
-        Ok(Tensor::from_vec(data, (action_size, 1), &self.device)?)
-    }
 }
 
 impl Algorithm for Algorithm2 {

@@ -1,3 +1,6 @@
+#[cfg(feature = "mkl")]
+extern crate intel_mkl_src;
+
 use candle_core::Device;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
@@ -13,21 +16,34 @@ mod utils;
 mod visualization;
 
 use algorithms::Algorithm;
+use algorithms::algorithm1::Algorithm1;
 use algorithms::algorithm2::Algorithm2;
 use environment::Environment;
 use visualization::VisualizationState;
 
-fn parse_args() -> (bool, bool) {
+fn parse_args() -> (bool, bool, usize, bool) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
     let grid = args.contains(&"--grid".to_string());
-    (visualize, grid)
+
+    let infinite_epochs = args.contains(&"--infinite-epochs".to_string());
+
+    let mut algo = 2;
+    if let Some(idx) = args.iter().position(|r| r == "--algo") {
+        if idx + 1 < args.len() {
+            if let Ok(val) = args[idx + 1].parse::<usize>() {
+                algo = val;
+            }
+        }
+    }
+
+    (visualize, grid, algo, infinite_epochs)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let device = Device::Cpu;
 
-    let (visualize, use_grid) = parse_args();
+    let (visualize, use_grid, algo_choice, infinite_epochs) = parse_args();
 
     let mut env: Box<dyn Environment> = if use_grid {
         println!("Using Grid Environment.");
@@ -58,16 +74,36 @@ fn main() -> Result<(), Box<dyn Error>> {
     let action_size = env.action_size();
     let dt = 0.1;
 
-    let mut algo = Algorithm2::new(state_size, action_size, vec![256, 128], dt, device)
-        .expect("Failed to create Algorithm2");
+    let mut algo1_opt = None;
+    let mut algo2_opt = None;
 
-    println!(
-        "layers len: {}, num_synapses: {}",
-        algo.model.layers.len(),
-        algo.model.synapses.len()
-    );
+    let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == 1 {
+        let mut algo = Algorithm1::new(state_size, action_size, vec![256, 128], dt, device)
+            .expect("Failed to create Algorithm1");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = algo.model.get_visualization_snapshot();
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = algo.model.synapses.len();
+        algo1_opt = Some(algo);
+        (eps, snap, layers, syns)
+    } else {
+        let mut algo = Algorithm2::new(state_size, action_size, vec![256, 128], dt, device)
+            .expect("Failed to create Algorithm2");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = algo.model.get_visualization_snapshot();
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = algo.model.synapses.len();
+        algo2_opt = Some(algo);
+        (eps, snap, layers, syns)
+    };
 
-    let n_episodes = algo.n_episodes;
+    println!("layers len: {}, num_synapses: {}", num_layers, num_synapses);
 
     // Start visualization if requested
     let vis_handle = if visualize {
@@ -75,7 +111,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // Initialize model structure
         if let Ok(mut state) = vis_state.lock() {
-            if let Ok(snapshot) = algo.model.get_visualization_snapshot() {
+            if let Ok(snapshot) = snapshot_result {
                 println!(
                     "Initial snapshot: {} layers, {} synapses",
                     snapshot.layers.len(),
@@ -95,7 +131,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let vis_state_arg = vis_handle.as_ref().map(|(_, state)| state.clone());
 
-    algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    if let Some(mut algo) = algo1_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo2_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    }
 
     // Signal visualization to close and wait for thread
     if let Some((handle, vis_state)) = vis_handle {

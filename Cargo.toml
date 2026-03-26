@@ -36,6 +36,10 @@ rand = "0.8.5"
 eframe = "0.31"
 egui = "0.31"
 winit = "0.30"
+intel-mkl-src = { version = "0.8.1", optional = true }
+
+[features]
+mkl = ["dep:intel-mkl-src", "candle-core/mkl", "candle-nn/mkl"]
 
 # webcam
 [dependencies.nokhwa]
