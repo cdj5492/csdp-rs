@@ -5,19 +5,20 @@ use candle_core::Device;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
-mod algorithms;
-mod dataset;
-mod environment;
-mod layer;
-mod models;
-mod robot;
-mod synapse;
-mod utils;
-mod visualization;
+use custom_framework::algorithms;
+use custom_framework::dataset;
+use custom_framework::environment;
+use custom_framework::layer;
+use custom_framework::models;
+use custom_framework::robot;
+use custom_framework::synapse;
+use custom_framework::utils;
+use custom_framework::visualization;
 
 use algorithms::Algorithm;
 use algorithms::algorithm1::Algorithm1;
 use algorithms::algorithm2::Algorithm2;
+use algorithms::algorithm3::Algorithm3;
 use environment::Environment;
 use visualization::VisualizationState;
 
@@ -77,11 +78,18 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut algo1_opt = None;
     let mut algo2_opt = None;
+    let mut algo3_opt = None;
 
     let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == 1 {
-        let mut algo =
-            Algorithm1::new(state_size, action_size, vec![256, 128], dt, device, state_bounds)
-                .expect("Failed to create Algorithm1");
+        let mut algo = Algorithm1::new(
+            state_size,
+            action_size,
+            vec![256, 128],
+            dt,
+            device,
+            state_bounds,
+        )
+        .expect("Failed to create Algorithm1");
         if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
@@ -91,10 +99,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = algo.model.synapses.len();
         algo1_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else {
-        let mut algo =
-            Algorithm2::new(state_size, action_size, vec![256, 128], dt, device, state_bounds)
-                .expect("Failed to create Algorithm2");
+    } else if algo_choice == 2 {
+        let mut algo = Algorithm2::new(
+            state_size,
+            action_size,
+            vec![256, 128],
+            dt,
+            device,
+            state_bounds,
+        )
+        .expect("Failed to create Algorithm2");
         if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
@@ -103,6 +117,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         let layers = algo.model.layers.len();
         let syns = algo.model.synapses.len();
         algo2_opt = Some(algo);
+        (eps, snap, layers, syns)
+    } else {
+        println!("Using Algorithm 3 (AC-CSDP)");
+        let mut algo = Algorithm3::new(
+            state_size,
+            action_size,
+            vec![256, 128],
+            dt,
+            device,
+            state_bounds,
+        )
+        .expect("Failed to create Algorithm3");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = algo.model.actor.get_visualization_snapshot();
+        let eps = algo.n_episodes;
+        let layers = algo.model.actor.layers.len() + algo.model.critic.layers.len();
+        let syns = algo.model.actor.synapses.len() + algo.model.critic.synapses.len();
+        algo3_opt = Some(algo);
         (eps, snap, layers, syns)
     };
 
@@ -137,6 +171,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Some(mut algo) = algo1_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo2_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo3_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     }
 

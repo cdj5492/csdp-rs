@@ -1,7 +1,4 @@
-#[path = "../robot/mod.rs"]
-mod robot;
-
-use crate::robot::real_lerobot::LeRobot;
+use custom_framework::robot::real_lerobot::LeRobot;
 use std::error::Error;
 use std::io::{self, Write};
 use std::sync::Arc;

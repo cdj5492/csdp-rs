@@ -18,7 +18,7 @@ impl RobotModel {
             //     - Broken apart into 6 groups of 3 for each motor (do nothing, spin left, spin
             //     right)
             // TODO: image input neurons and handle option
-            model: Model::new(6, 18, vec![hidden_size; num_hidden], device, dt).unwrap(),
+            model: Model::new(6, 18, vec![hidden_size; num_hidden], device, dt, None).unwrap(),
         }
     }
 

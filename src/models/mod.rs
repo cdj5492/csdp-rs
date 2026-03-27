@@ -9,6 +9,7 @@ use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
 pub mod rl_model1;
 pub mod rl_model2;
+pub mod rl_model3;
 mod robot_model;
 
 /// Configuration for creating a model
@@ -24,6 +25,10 @@ pub struct ModelConfig {
 pub enum LayerConfig {
     Bernoulli {
         size: usize,
+        name: Option<String>,
+    },
+    OneHot {
+        bounds: Vec<usize>,
         name: Option<String>,
     },
     LIF {
@@ -86,6 +91,7 @@ impl Model {
         hidden_sizes: Vec<usize>,
         device: &Device,
         dt: f32,
+        input_bounds: Option<Vec<usize>>,
     ) -> Option<Self> {
         // Default LIF parameters
         let g_thr = 2.0;
@@ -100,12 +106,19 @@ impl Model {
         // Build layer configs
         let mut layer_configs = vec![];
 
-        // Input layer (Bernoulli)
+        // Input layer
         // Index 0
-        layer_configs.push(LayerConfig::Bernoulli {
-            size: input_size,
-            name: Some("Input".to_string()),
-        });
+        if let Some(bounds) = input_bounds {
+            layer_configs.push(LayerConfig::OneHot {
+                bounds,
+                name: Some("Input".to_string()),
+            });
+        } else {
+            layer_configs.push(LayerConfig::Bernoulli {
+                size: input_size,
+                name: Some("Input".to_string()),
+            });
+        }
 
         // Context input layer (labels when in training)
         // Index 1
@@ -248,6 +261,18 @@ impl Model {
                     Box::new(layer) as Box<dyn Layer>,
                     "Bernoulli".to_string(),
                     *size,
+                    name,
+                )
+            }
+            LayerConfig::OneHot { bounds, name } => {
+                use crate::layer::one_hot::OneHotLayer;
+                let layer = OneHotLayer::new(bounds.clone(), device)?;
+                let total_size: usize = bounds.iter().sum();
+                let name = name.clone().unwrap_or_else(|| format!("Layer_{}", id));
+                (
+                    Box::new(layer) as Box<dyn Layer>,
+                    "OneHot".to_string(),
+                    total_size,
                     name,
                 )
             }
@@ -496,5 +521,44 @@ impl Model {
         let output = self.layers[layer_id].output()?;
         let output_vec = output.flatten_all()?.to_vec1::<f32>()?;
         Ok(output_vec)
+    }
+
+    /// Save the model parameters to a safetensors file
+    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> CandleResult<()> {
+        let mut tensor_map = std::collections::HashMap::new();
+
+        for syn_conn in &self.synapses {
+            let state = syn_conn.synapse.get_state()?;
+            let prefix = format!("synapse_{}_", syn_conn.metadata.id);
+            for (key, tensor) in state {
+                tensor_map.insert(format!("{}{}", prefix, key), tensor);
+            }
+        }
+
+        candle_core::safetensors::save(&tensor_map, path)?;
+        Ok(())
+    }
+
+    /// Load the model parameters from a safetensors file
+    pub fn load<P: AsRef<std::path::Path>>(&mut self, path: P) -> CandleResult<()> {
+        let loaded_tensors = candle_core::safetensors::load(path, &self.device)?;
+
+        for syn_conn in self.synapses.iter_mut() {
+            let prefix = format!("synapse_{}_", syn_conn.metadata.id);
+            let mut state = std::collections::HashMap::new();
+
+            for (key, tensor) in &loaded_tensors {
+                if key.starts_with(&prefix) {
+                    let local_key = key.strip_prefix(&prefix).unwrap().to_string();
+                    state.insert(local_key, tensor.clone());
+                }
+            }
+
+            if !state.is_empty() {
+                syn_conn.synapse.set_state(&state)?;
+            }
+        }
+
+        Ok(())
     }
 }
