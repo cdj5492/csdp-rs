@@ -93,8 +93,9 @@ impl Model {
         dt: f32,
         input_bounds: Option<Vec<usize>>,
     ) -> Option<Self> {
-        // Default LIF parameters
-        let g_thr = 2.0;
+        // Lower default LIF parameter g_thr to 0.5 allows sparse input traces to cross the
+        // baseline and jumpstart adaptive homeostatic adaptation.
+        let g_thr = 0.5;
         let tau_lif = 13.0;
         let trace_tau = 5.0;
         let thresh_lambda = 0.01;

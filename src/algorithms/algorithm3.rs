@@ -149,9 +149,9 @@ impl Algorithm3 {
         }
 
         let mut input_vec = Vec::with_capacity(state_vec.len() + action_vec.len());
-        // Scale inputs by 0.1 to avoid cascading SNN saturation (where all neurons fire at 100%)
-        input_vec.extend(state_vec.iter().map(|&x| x * 0.1));
-        input_vec.extend(action_vec.iter().map(|&x| x * 0.1));
+        // Scale inputs removed: the true cause of runaway was the adaptive threshold bug.
+        input_vec.extend_from_slice(state_vec);
+        input_vec.extend_from_slice(action_vec);
         let input_tensor = Tensor::from_vec(
             input_vec,
             (state_vec.len() + action_vec.len(), 1),

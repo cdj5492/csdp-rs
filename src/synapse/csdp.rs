@@ -17,8 +17,9 @@ impl CSDP {
         post_size: usize,
         device: &candle_core::Device,
     ) -> CandleResult<Self> {
-        // TODO: tune initialization
-        let weights = Tensor::rand(-1.0f32, 1.0, (post_size, pre_size), device)?;
+        // Scale weights bounded to Uniform(0.0, 1.0). In strictly sparse representations (like OneHot),
+        // a standard symmetric zero-mean initialization mathematically zeroes spontaneous input mapping!
+        let weights = Tensor::rand(0.0f32, 1.0, (post_size, pre_size), device)?;
         let biases = Tensor::zeros((post_size, 1), candle_core::DType::F32, device)?;
         // let biases = Tensor::rand(-1.0f32, 1.0, (post_size, 1), device)?;
         Ok(Self { weights, biases })

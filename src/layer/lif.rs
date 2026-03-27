@@ -65,7 +65,11 @@ impl Layer for LIFLayer {
                 .sum_all()?
                 .to_device(&Device::Cpu)?
                 .to_scalar::<f32>()?
-                - 1.0);
+                - (self.size as f32 * 0.02)); // Target 2% firing rate
+
+        if self.thresh < 0.0 {
+            self.thresh = 0.0;
+        }
 
         let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
         self.mod_signal
