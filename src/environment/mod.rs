@@ -6,6 +6,9 @@ use std::error::Error;
 pub trait Environment {
     fn state_size(&self) -> usize;
     fn action_size(&self) -> usize;
+    fn state_bounds(&self) -> Option<Vec<usize>> {
+        None
+    }
 
     fn get_state(&mut self) -> Result<Vec<f64>, Box<dyn Error>>;
 

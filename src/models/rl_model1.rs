@@ -1,5 +1,6 @@
 use crate::layer::bernoulli::BernoulliLayer;
 use crate::layer::lif::LIFLayer;
+use crate::layer::one_hot::OneHotLayer;
 use crate::layer::mod_signal::standard::StandardModSignal;
 use crate::layer::{Layer, LayerMetadata, LayerPosition};
 use crate::synapse::csdp::CSDP;
@@ -20,6 +21,10 @@ pub struct ModelConfig {
 pub enum LayerConfig {
     Bernoulli {
         size: usize,
+        name: Option<String>,
+    },
+    OneHot {
+        bounds: Vec<usize>,
         name: Option<String>,
     },
     LIF {
@@ -64,6 +69,7 @@ impl RLModel1 {
         hidden_sizes: Vec<usize>,
         device: &Device,
         dt: f32,
+        input_bounds: Option<Vec<usize>>,
     ) -> Option<Self> {
         // Default LIF parameters
         let g_thr = 2.0;
@@ -78,18 +84,25 @@ impl RLModel1 {
         // Build layer configs
         let mut layer_configs = vec![];
 
-        // Input layer (Bernoulli)
+        // Input layer
         // Index 0
-        layer_configs.push(LayerConfig::Bernoulli {
-            size: input_size,
-            name: Some("Input".to_string()),
-        });
+        if let Some(bounds) = input_bounds {
+            layer_configs.push(LayerConfig::OneHot {
+                bounds,
+                name: Some("Input (OneHot)".to_string()),
+            });
+        } else {
+            layer_configs.push(LayerConfig::Bernoulli {
+                size: input_size,
+                name: Some("Input (Bernoulli)".to_string()),
+            });
+        }
 
         // Action input layer
         // Index 1
-        layer_configs.push(LayerConfig::Bernoulli {
-            size: action_size,
-            name: Some("Action".to_string()),
+        layer_configs.push(LayerConfig::OneHot {
+            bounds: vec![action_size],
+            name: Some("Action (OneHot)".to_string()),
         });
 
         // Hidden layers (LIF)
@@ -201,6 +214,17 @@ impl RLModel1 {
                     Box::new(layer) as Box<dyn Layer>,
                     "Bernoulli".to_string(),
                     *size,
+                    name,
+                )
+            }
+            LayerConfig::OneHot { bounds, name } => {
+                let layer = OneHotLayer::new(bounds.clone(), device)?;
+                let size = layer.size();
+                let name = name.clone().unwrap_or_else(|| format!("Layer_{}", id));
+                (
+                    Box::new(layer) as Box<dyn Layer>,
+                    "OneHot".to_string(),
+                    size,
                     name,
                 )
             }

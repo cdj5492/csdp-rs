@@ -23,8 +23,9 @@ impl Algorithm1 {
         hidden_sizes: Vec<usize>,
         dt: f32,
         device: Device,
+        input_bounds: Option<Vec<usize>>,
     ) -> Result<Self, Box<dyn Error>> {
-        let model = RLModel1::new(state_size, action_size, hidden_sizes, &device, dt)
+        let model = RLModel1::new(state_size, action_size, hidden_sizes, &device, dt, input_bounds)
             .expect("Failed to create RLModel1");
 
         Ok(Self {
@@ -40,11 +41,8 @@ impl Algorithm1 {
     fn get_action_tensor(
         &self,
         action_idx: usize,
-        action_size: usize,
     ) -> Result<Tensor, Box<dyn Error>> {
-        let mut data = vec![0.0f32; action_size];
-        data[action_idx] = 1.0;
-        Ok(Tensor::from_vec(data, (action_size, 1), &self.device)?)
+        Ok(Tensor::from_vec(vec![action_idx as f32], (1, 1), &self.device)?)
     }
 }
 
@@ -57,6 +55,10 @@ impl Algorithm for Algorithm1 {
     ) -> Result<(), Box<dyn Error>> {
         let mut total_iteration = 0;
         let start_time = Instant::now();
+        let mut total_inference_time = Duration::new(0, 0);
+        let mut total_inference_actions: usize = 0;
+        let mut total_training_time = Duration::new(0, 0);
+        let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
 
@@ -72,6 +74,8 @@ impl Algorithm for Algorithm1 {
 
             let mut total_reward = 0.0;
 
+            let inference_start = Instant::now();
+
             for _step in 0..self.n_steps_per_episode {
                 let current_state = env.get_state()?;
 
@@ -83,7 +87,8 @@ impl Algorithm for Algorithm1 {
                 let mut best_action = 0;
 
                 for a in 0..action_size {
-                    let action_tensor = self.get_action_tensor(a, action_size)?;
+                    total_inference_actions += 1;
+                    let action_tensor = self.get_action_tensor(a)?;
                     let activity =
                         self.model
                             .process(&state_tensor, &action_tensor, self.n_timesteps)?;
@@ -138,6 +143,9 @@ impl Algorithm for Algorithm1 {
                     }
                 }
             } // end of inference steps
+
+            let inference_elapsed = inference_start.elapsed();
+            total_inference_time += inference_elapsed;
 
             // Check if save or load was requested
             if let Some(state_arc) = &vis_state {
@@ -213,6 +221,8 @@ impl Algorithm for Algorithm1 {
             // Train on collected episode data
             self.model.enable_learning();
 
+            let training_start = Instant::now();
+
             for _epoch in 0..self.epochs_per_episode {
                 for (state_t, action_t, ytype) in &episode_data {
                     total_iteration += 1;
@@ -264,6 +274,25 @@ impl Algorithm for Algorithm1 {
                     }
                 }
             }
+
+            let training_elapsed = training_start.elapsed();
+            total_training_time += training_elapsed;
+            total_epochs += self.epochs_per_episode;
+
+            let inf_aps = if total_inference_time.as_secs_f32() > 0.0 {
+                total_inference_actions as f32 / total_inference_time.as_secs_f32()
+            } else {
+                0.0
+            };
+            let ep_s = if total_training_time.as_secs_f32() > 0.0 {
+                total_epochs as f32 / total_training_time.as_secs_f32()
+            } else {
+                0.0
+            };
+            println!(
+                "[Episode {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
+                episode, inf_aps, ep_s
+            );
         } // end of episodes
 
         // Final auto-save

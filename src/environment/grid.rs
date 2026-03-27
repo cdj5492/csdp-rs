@@ -30,6 +30,10 @@ impl Environment for GridEnvironment {
         5
     }
 
+    fn state_bounds(&self) -> Option<Vec<usize>> {
+        Some(vec![50, 50, 50, 50])
+    }
+
     fn get_state(&mut self) -> Result<Vec<f64>, Box<dyn Error>> {
         Ok(vec![
             self.player_x as f64,

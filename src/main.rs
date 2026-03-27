@@ -72,14 +72,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let state_size = env.state_size();
     let action_size = env.action_size();
+    let state_bounds = env.state_bounds();
     let dt = 0.1;
 
     let mut algo1_opt = None;
     let mut algo2_opt = None;
 
     let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == 1 {
-        let mut algo = Algorithm1::new(state_size, action_size, vec![256, 128], dt, device)
-            .expect("Failed to create Algorithm1");
+        let mut algo =
+            Algorithm1::new(state_size, action_size, vec![256, 128], dt, device, state_bounds)
+                .expect("Failed to create Algorithm1");
         if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
@@ -90,8 +92,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo1_opt = Some(algo);
         (eps, snap, layers, syns)
     } else {
-        let mut algo = Algorithm2::new(state_size, action_size, vec![256, 128], dt, device)
-            .expect("Failed to create Algorithm2");
+        let mut algo =
+            Algorithm2::new(state_size, action_size, vec![256, 128], dt, device, state_bounds)
+                .expect("Failed to create Algorithm2");
         if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }

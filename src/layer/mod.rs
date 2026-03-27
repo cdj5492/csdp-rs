@@ -1,6 +1,7 @@
 pub mod bernoulli;
 pub mod lif;
 pub mod mod_signal;
+pub mod one_hot;
 
 use candle_core::{Result as CandleResult, Tensor};
 

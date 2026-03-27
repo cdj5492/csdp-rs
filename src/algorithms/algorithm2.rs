@@ -23,10 +23,21 @@ impl Algorithm2 {
         hidden_sizes: Vec<usize>,
         dt: f32,
         device: Device,
+        state_bounds: Option<Vec<usize>>,
     ) -> Result<Self, Box<dyn Error>> {
-        let input_size = state_size * 2 + action_size;
+        let input_size = state_size * 2 + 1;
         let context_size = 1;
-        let model = RLModel2::new(input_size, context_size, hidden_sizes, &device, dt)
+
+        // Construct input_bounds for RLModel2: [s_t_bounds, s_t_plus_m_bounds, action_bound]
+        let input_bounds = state_bounds.map(|bounds| {
+            let mut combined = Vec::with_capacity(state_size * 2 + 1);
+            combined.extend(bounds.iter());
+            combined.extend(bounds.iter());
+            combined.push(action_size); // Action input is a single integer 0..action_size
+            combined
+        });
+
+        let model = RLModel2::new(input_size, context_size, hidden_sizes, &device, dt, input_bounds)
             .expect("Failed to create RLModel2");
 
         Ok(Self {
@@ -49,6 +60,10 @@ impl Algorithm for Algorithm2 {
     ) -> Result<(), Box<dyn Error>> {
         let mut total_iteration = 0;
         let start_time = Instant::now();
+        let mut total_inference_time = Duration::new(0, 0);
+        let mut total_inference_actions: usize = 0;
+        let mut total_training_time = Duration::new(0, 0);
+        let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
 
@@ -66,6 +81,8 @@ impl Algorithm for Algorithm2 {
 
             let mut total_reward = 0.0;
 
+            let inference_start = Instant::now();
+
             for _step in 0..self.n_steps_per_episode {
                 let current_state = env.get_state()?;
 
@@ -76,20 +93,20 @@ impl Algorithm for Algorithm2 {
                 let mut best_action = 0;
 
                 for a in 0..action_size {
+                    total_inference_actions += 1;
                     // Create combined input: [x_t, x_{t+M}, a]
-                    let mut input_vec = Vec::with_capacity(state_size * 2 + action_size);
-                    input_vec.extend(state_f32.iter()); // Fix: use iter() to avoid moving state_f32
+                    let mut input_vec = Vec::with_capacity(state_size * 2 + 1);
+                    input_vec.extend(state_f32.iter());
                     input_vec.extend(vec![0.0f32; state_size]); // x_{t+M} is zeroed out during inference
-                    for j in 0..action_size {
-                        input_vec.push(if j == a { 1.0 } else { 0.0 });
-                    }
+                    input_vec.push(a as f32);
 
                     let input_tensor = Tensor::from_vec(
                         input_vec,
-                        (state_size * 2 + action_size, 1),
+                        (state_size * 2 + 1, 1),
                         &self.device,
                     )?;
                     let activity = self.model.process(&input_tensor, self.n_timesteps)?;
+                    println!("activity for {}: {}", a, activity);
 
                     if activity > best_activity {
                         best_activity = activity;
@@ -130,6 +147,9 @@ impl Algorithm for Algorithm2 {
                     }
                 }
             } // end of inference steps
+
+            let inference_elapsed = inference_start.elapsed();
+            total_inference_time += inference_elapsed;
 
             // Check if save or load was requested
             if let Some(state_arc) = &vis_state {
@@ -221,22 +241,18 @@ impl Algorithm for Algorithm2 {
                     let r_t = episode_rewards[t] as f32;
 
                     // Positive sample
-                    let mut pos_input = Vec::with_capacity(state_size * 2 + action_size);
+                    let mut pos_input = Vec::with_capacity(state_size * 2 + 1);
                     pos_input.extend(s_t.clone());
                     pos_input.extend(s_t_plus_m.clone());
-                    for j in 0..action_size {
-                        pos_input.push(if j == a_t { 1.0 } else { 0.0 });
-                    }
+                    pos_input.push(a_t as f32);
                     train_data.push((pos_input, 1.0f32, r_t));
 
                     // Negative sample 1: random future state
                     let neg_m = rng.gen_range(0..n_states);
-                    let mut neg_input1 = Vec::with_capacity(state_size * 2 + action_size);
+                    let mut neg_input1 = Vec::with_capacity(state_size * 2 + 1);
                     neg_input1.extend(s_t.clone());
                     neg_input1.extend(episode_states[neg_m].clone());
-                    for j in 0..action_size {
-                        neg_input1.push(if j == a_t { 1.0 } else { 0.0 });
-                    }
+                    neg_input1.push(a_t as f32);
                     train_data.push((neg_input1, 0.0f32, 1.0f32)); // r_t ignored for Y=0
 
                     // Negative sample 2: random valid action
@@ -244,12 +260,10 @@ impl Algorithm for Algorithm2 {
                     if a_star == a_t {
                         a_star = (a_star + 1) % action_size;
                     }
-                    let mut neg_input2 = Vec::with_capacity(state_size * 2 + action_size);
+                    let mut neg_input2 = Vec::with_capacity(state_size * 2 + 1);
                     neg_input2.extend(s_t.clone());
                     neg_input2.extend(s_t_plus_m.clone());
-                    for j in 0..action_size {
-                        neg_input2.push(if j == a_star { 1.0 } else { 0.0 });
-                    }
+                    neg_input2.push(a_star as f32);
                     train_data.push((neg_input2, 0.0f32, 1.0f32));
                 }
 
@@ -266,6 +280,8 @@ impl Algorithm for Algorithm2 {
             // Train on collected episode data
             self.model.enable_learning();
 
+            let training_start = Instant::now();
+
             for _epoch in 0..self.epochs_per_episode {
                 println!(
                     "Training epoch {} with {} samples",
@@ -277,7 +293,7 @@ impl Algorithm for Algorithm2 {
 
                     let input_tensor = Tensor::from_vec(
                         input_vec.clone(),
-                        (state_size * 2 + action_size, 1),
+                        (state_size * 2 + 1, 1),
                         &self.device,
                     )?;
                     let context_tensor = Tensor::from_vec(vec![*label], (1, 1), &self.device)?;
@@ -331,6 +347,25 @@ impl Algorithm for Algorithm2 {
                     }
                 }
             }
+
+            let training_elapsed = training_start.elapsed();
+            total_training_time += training_elapsed;
+            total_epochs += self.epochs_per_episode;
+
+            let inf_aps = if total_inference_time.as_secs_f32() > 0.0 {
+                total_inference_actions as f32 / total_inference_time.as_secs_f32()
+            } else {
+                0.0
+            };
+            let ep_s = if total_training_time.as_secs_f32() > 0.0 {
+                total_epochs as f32 / total_training_time.as_secs_f32()
+            } else {
+                0.0
+            };
+            println!(
+                "[Episode {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
+                episode, inf_aps, ep_s
+            );
         } // end of episodes
 
         // Final auto-save
