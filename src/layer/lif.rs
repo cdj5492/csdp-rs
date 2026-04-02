@@ -71,6 +71,7 @@ impl Layer for LIFLayer {
             self.thresh = 0.0;
         }
 
+
         let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
         self.mod_signal
             .calc_mod_signal(&self.spikes, &lab, self.current_reward, dt)?;

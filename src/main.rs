@@ -16,6 +16,8 @@ use custom_framework::utils;
 use custom_framework::visualization;
 
 use algorithms::Algorithm;
+use algorithms::algorithm_ff1::AlgorithmFF1;
+use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm1::Algorithm1;
 use algorithms::algorithm2::Algorithm2;
 use algorithms::algorithm3::Algorithm3;
@@ -42,7 +44,8 @@ fn parse_args() -> (bool, bool, usize, bool) {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let device = Device::Cpu;
+    // let device = Device::Cpu;
+    let device = Device::new_cuda(0)?;
 
     let (visualize, use_grid, algo_choice, infinite_epochs) = parse_args();
 
@@ -79,6 +82,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo1_opt = None;
     let mut algo2_opt = None;
     let mut algo3_opt = None;
+    let mut algo_ff1_opt = None;
+    let mut algo_ff2_opt = None;
 
     let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == 1 {
         let mut algo = Algorithm1::new(
@@ -118,15 +123,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = algo.model.synapses.len();
         algo2_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else {
+    } else if algo_choice == 3 {
         println!("Using Algorithm 3 (AC-CSDP)");
         let mut algo = Algorithm3::new(
             state_size,
             action_size,
             vec![256, 128],
             dt,
-            device,
-            state_bounds,
+            device.clone(),
+            state_bounds.clone(),
         )
         .expect("Failed to create Algorithm3");
         if infinite_epochs {
@@ -137,6 +142,36 @@ fn main() -> Result<(), Box<dyn Error>> {
         let layers = algo.model.actor.layers.len() + algo.model.critic.layers.len();
         let syns = algo.model.actor.synapses.len() + algo.model.critic.synapses.len();
         algo3_opt = Some(algo);
+        (eps, snap, layers, syns)
+    } else if algo_choice == 4 {
+        println!("Using Algorithm 4 (FF Model - State/Action Iterator)");
+        let mut algo = AlgorithmFF1::new(state_size, action_size, vec![256, 128], device.clone())
+            .expect("Failed to create AlgorithmFF1");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = Err(candle_core::Error::Msg(
+            "FF Model has no visualization".to_string(),
+        ));
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = 0;
+        algo_ff1_opt = Some(algo);
+        (eps, snap, layers, syns)
+    } else {
+        println!("Using Algorithm 5 (FF Model - Transition Evaluator)");
+        let mut algo = AlgorithmFF2::new(state_size, action_size, vec![256, 128], device.clone())
+            .expect("Failed to create AlgorithmFF2");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = Err(candle_core::Error::Msg(
+            "FF Model has no visualization".to_string(),
+        ));
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = 0;
+        algo_ff2_opt = Some(algo);
         (eps, snap, layers, syns)
     };
 
@@ -173,6 +208,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if let Some(mut algo) = algo2_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo3_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo_ff1_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo_ff2_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     }
 

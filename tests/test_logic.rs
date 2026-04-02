@@ -191,10 +191,6 @@ fn test_ac_csdp_actor_logic_learning() {
         }
 
         println!("Epoch {}: Accuracy {}/4", epoch, total_accuracy);
-        if total_accuracy == 4 {
-            println!("Converged!");
-            break;
-        }
 
         if epoch == 50 {
             assert_eq!(

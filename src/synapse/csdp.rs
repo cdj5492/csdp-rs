@@ -17,9 +17,11 @@ impl CSDP {
         post_size: usize,
         device: &candle_core::Device,
     ) -> CandleResult<Self> {
-        // Scale weights bounded to Uniform(0.0, 1.0). In strictly sparse representations (like OneHot),
+        // Scale weights bounded to Uniform(0.0, 2.0 / sqrt(N)). In strictly sparse representations (like OneHot),
         // a standard symmetric zero-mean initialization mathematically zeroes spontaneous input mapping!
-        let weights = Tensor::rand(0.0f32, 1.0, (post_size, pre_size), device)?;
+        // But a strict 1.0 maximum causes deep hidden layers to instantly saturate the next layers statically.
+        let w_bound = 2.0f32 / (pre_size as f32).sqrt();
+        let weights = Tensor::rand(0.0f32, w_bound, (post_size, pre_size), device)?;
         let biases = Tensor::zeros((post_size, 1), candle_core::DType::F32, device)?;
         // let biases = Tensor::rand(-1.0f32, 1.0, (post_size, 1), device)?;
         Ok(Self { weights, biases })

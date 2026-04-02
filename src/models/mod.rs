@@ -7,6 +7,7 @@ use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
 use crate::visualization::{LayerVisInfo, SynapseVisInfo};
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
+pub mod ff_model;
 pub mod rl_model1;
 pub mod rl_model2;
 pub mod rl_model3;
