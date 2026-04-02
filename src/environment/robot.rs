@@ -44,6 +44,10 @@ impl Environment for RobotEnvironment {
         NUM_ACTIONS
     }
 
+    fn clone_box(&self) -> Box<dyn Environment> {
+        panic!("RobotEnvironment cannot be cloned securely across processes/vectors! Disable vectorization or utilize Simulator proxies.");
+    }
+
     fn get_state(&mut self) -> Result<Vec<f64>, Box<dyn Error>> {
         let pos = self.follower.get_motor_positions()?;
         Ok(pos.to_vec())

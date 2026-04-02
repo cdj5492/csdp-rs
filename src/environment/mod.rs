@@ -10,6 +10,8 @@ pub trait Environment {
         None
     }
 
+    fn clone_box(&self) -> Box<dyn Environment>;
+
     fn get_state(&mut self) -> Result<Vec<f64>, Box<dyn Error>>;
 
     /// Compute the reward of applying an action from a given state (without mutating)

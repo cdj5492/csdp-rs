@@ -2,6 +2,7 @@ use crate::environment::Environment;
 use rand::Rng;
 use std::error::Error;
 
+#[derive(Clone)]
 pub struct GridEnvironment {
     player_x: i32,
     player_y: i32,
@@ -28,6 +29,10 @@ impl Environment for GridEnvironment {
 
     fn action_size(&self) -> usize {
         4
+    }
+
+    fn clone_box(&self) -> Box<dyn Environment> {
+        Box::new(self.clone())
     }
 
     fn state_bounds(&self) -> Option<Vec<usize>> {
@@ -63,6 +68,10 @@ impl Environment for GridEnvironment {
         let distance = (dx * dx + dy * dy).sqrt();
         
         let max_dist = (49.0f64.powi(2) + 49.0f64.powi(2)).sqrt();
+
+        if distance == 0.0 {
+            return 10.0; // Extra reward if goal reached
+        }
         
         // Maps 0 distance to 5.0 and max_dist to -5.0
         5.0 - (distance / max_dist) * 10.0

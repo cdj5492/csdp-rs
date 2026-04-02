@@ -51,9 +51,13 @@ fn test_ff_logic_learning() {
     let input_c0 = overlay_y_on_x(&x, &vec![0; 4], 2).unwrap();
     let input_c1 = overlay_y_on_x(&x, &vec![1; 4], 2).unwrap();
 
-    let predictions = model.predict(&[input_c0, input_c1]).unwrap();
-    let pred_vec = predictions.to_vec1::<u32>().unwrap();
-
-    println!("Predictions: {:?}", pred_vec);
+    // Let's create combinations: one pos, one neg
+    let inputs = vec![pos_input.clone(), neg_input_test.clone()];
+    
+    // Test inference via chunk_size
+    let best_classes = model.predict(&inputs, inputs.len())?;
+    let best_class = best_classes[0];
+    
+    println!("Best class selected: {}", best_class);
     assert_eq!(pred_vec, vec![0, 1, 1, 0]);
 }

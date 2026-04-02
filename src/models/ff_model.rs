@@ -93,36 +93,36 @@ impl FFModel {
         Ok(())
     }
 
-    pub fn predict(&self, inputs: &[Tensor]) -> CandleResult<Tensor> {
-        let mut best_scores = vec![0.0f32; inputs.len()];
+    pub fn predict(&self, inputs: &[Tensor], chunk_size: usize) -> CandleResult<Vec<usize>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
         
-        for (i, input) in inputs.iter().enumerate() {
-            let mut h = input.clone();
-            let mut total_goodness = 0.0;
-            
-            for layer in &self.layers {
-                h = layer.forward(&h)?;
-                let goodness = h.sqr()?.mean_keepdim(1)?.to_vec2::<f32>()?[0][0];
-                total_goodness += goodness;
-            }
-            best_scores[i] = total_goodness;
+        let batched_inputs = Tensor::cat(inputs, 0)?;
+        let mut h = batched_inputs;
+        let mut total_goodnesses = Tensor::zeros((inputs.len(),), candle_core::DType::F32, inputs[0].device())?;
+        
+        for layer in &self.layers {
+            h = layer.forward(&h)?;
+            let goodness = h.sqr()?.mean_keepdim(1)?.squeeze(1)?;
+            total_goodnesses = total_goodnesses.broadcast_add(&goodness)?;
         }
-        println!("Predict scores: {:?}", best_scores);
+        
+        let best_scores: Vec<f32> = total_goodnesses.to_vec1()?;
+        // println!("Predict scores: {:?}", best_scores); // Muted print for vectorization scale
 
-        let mut goodness_per_label = Vec::new();
-        for x in inputs {
-            let mut h = x.clone();
-            let mut total_goodness = Tensor::zeros((x.dim(0)?, 1), DType::F32, x.device())?;
-
-            for layer in self.layers.iter() {
-                h = layer.forward(&h)?;
-                let goodness = h.sqr()?.mean_keepdim(1)?;
-                total_goodness = total_goodness.add(&goodness)?;
+        let mut best_indices = Vec::new();
+        for chunk in best_scores.chunks(chunk_size) {
+            let (mut best_idx, mut max_score) = (0, f32::MIN);
+            for (i, &score) in chunk.iter().enumerate() {
+                if score > max_score {
+                    max_score = score;
+                    best_idx = i;
+                }
             }
-            goodness_per_label.push(total_goodness);
+            best_indices.push(best_idx);
         }
-
-        let stacked = Tensor::stack(&goodness_per_label, 1)?.squeeze(2)?;
-        stacked.argmax(1)
+        
+        Ok(best_indices)
     }
 }

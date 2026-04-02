@@ -53,69 +53,82 @@ impl Algorithm for AlgorithmFF1 {
         let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
+        
+        let n_envs = 16;
+        let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
+        for _ in 1..n_envs {
+            envs.push(env.clone_box());
+        }
 
         for episode in 1..=self.n_episodes {
-            println!("starting episode {}", episode);
+            println!("starting vectorized episode {} (x{})", episode, n_envs);
 
-            env.reset()?;
-            std::thread::sleep(Duration::from_millis(500)); // wait for environment to settle
-
+            for e in envs.iter_mut() {
+                e.reset()?;
+            }
+            std::thread::sleep(Duration::from_millis(50)); // wait for environment to settle
+            
             let mut episode_data = Vec::new();
-
-            let mut total_reward = 0.0;
+            let mut total_rewards = vec![0.0; n_envs];
 
             let inference_start = Instant::now();
 
             for _step in 0..self.n_steps_per_episode {
-                let current_state = env.get_state()?;
-
-                let state_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();
-
-                let mut action_inputs = Vec::new();
-                for a in 0..action_size {
-                    let mut input_vec = vec![0.0; action_size];
-                    input_vec[a] = 1.0;
-                    input_vec.extend(state_f32.iter().copied());
-                    action_inputs.push(Tensor::from_vec(
-                        input_vec,
-                        (1, action_size + state_size),
-                        &self.device,
-                    )?);
-                    total_inference_actions += 1;
+                let mut current_states = Vec::new();
+                for e in envs.iter_mut() {
+                    current_states.push(e.get_state()?);
                 }
 
-                let best_action_t = self.model.predict(&action_inputs)?;
-                let best_action = best_action_t.to_vec1::<u32>()?[0] as usize;
-
-                let mut step_actions = Vec::new();
-                for a in 0..action_size {
-                    let reward = env.evaluate_action(&current_state, a);
-                    step_actions.push((a, action_inputs[a].clone(), reward));
-                }
-
-                println!("best action: {}", best_action);
-
-                // Add the true reward for the chosen action to the episode's total reward
-                total_reward += env.evaluate_action(&current_state, best_action);
-
-                env.apply_action(best_action)?;
-                std::thread::sleep(Duration::from_millis(100)); // give some time for action to take effect
-
-                if let Some(ref vis_state_arc) = vis_state {
-                    if let Ok(mut state) = vis_state_arc.try_lock() {
-                        let env_state = env.get_state()?;
-                        state.environment_state = Some(env_state);
+                let mut all_action_inputs = Vec::new();
+                for state in current_states.iter() {
+                    let state_f32: Vec<f32> = state.iter().map(|&x| x as f32).collect();
+                    for a in 0..action_size {
+                        let mut input_vec = vec![0.0; action_size];
+                        input_vec[a] = 1.0;
+                        input_vec.extend(state_f32.iter().copied());
+                        all_action_inputs.push(Tensor::from_vec(
+                            input_vec,
+                            (1, action_size + state_size),
+                            &self.device,
+                        )?);
+                        total_inference_actions += 1;
                     }
                 }
 
-                // Sort actions by reward (ascending)
-                step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+                let best_actions = self.model.predict(&all_action_inputs, action_size)?;
 
-                // Save pairs of (best, worst) to mimic positive vs negative inputs
-                // For FF model we just need a positive tensor and negative tensor
-                let worst_tensor = step_actions.first().unwrap().1.clone();
-                let best_tensor = step_actions.last().unwrap().1.clone();
-                episode_data.push((best_tensor, worst_tensor));
+                for (env_idx, action) in best_actions.into_iter().enumerate() {
+                    let e = &mut envs[env_idx];
+                    let current_state = &current_states[env_idx];
+
+                    let mut step_actions = Vec::new();
+                    for a in 0..action_size {
+                        let reward = e.evaluate_action(current_state, a);
+                        let action_tensor = all_action_inputs[env_idx * action_size + a].clone();
+                        step_actions.push((a, action_tensor, reward));
+                    }
+
+                    if env_idx == 0 {
+                        // println!("best action on tracking env: {}", action);
+                    }
+
+                    total_rewards[env_idx] += e.evaluate_action(current_state, action);
+                    e.apply_action(action)?;
+
+                    step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+                    let worst_tensor = step_actions.first().unwrap().1.clone();
+                    let best_tensor = step_actions.last().unwrap().1.clone();
+                    episode_data.push((best_tensor, worst_tensor));
+                }
+                
+                std::thread::sleep(Duration::from_millis(10));
+
+                if let Some(ref vis_state_arc) = vis_state {
+                    if let Ok(mut state) = vis_state_arc.try_lock() {
+                        let env_state = envs[0].get_state()?;
+                        state.environment_state = Some(env_state);
+                    }
+                }
 
                 if let Some(ref vis_state_arc) = vis_state {
                     loop {
@@ -136,7 +149,7 @@ impl Algorithm for AlgorithmFF1 {
 
             if let Some(ref vis_state_arc) = vis_state {
                 if let Ok(mut state) = vis_state_arc.try_lock() {
-                    state.epoch_rewards.push((episode, total_reward as f32));
+                    state.epoch_rewards.push((episode, total_rewards[0] as f32));
                 }
             }
 
@@ -174,8 +187,8 @@ impl Algorithm for AlgorithmFF1 {
                 0.0
             };
             println!(
-                "[Episode {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, inf_aps, ep_s
+                "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
+                episode, total_rewards[0], inf_aps, ep_s
             );
         }
 
