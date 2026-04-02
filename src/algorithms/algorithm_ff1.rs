@@ -23,15 +23,16 @@ impl AlgorithmFF1 {
         device: Device,
     ) -> Result<Self, Box<dyn Error>> {
         let input_size = state_size + action_size;
+        let epochs_per_episode = 100;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device).expect("Failed to create FFModel");
+        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
             n_episodes: 100,
             n_steps_per_episode: 50,
-            epochs_per_episode: 5,
+            epochs_per_episode,
             device,
         })
     }

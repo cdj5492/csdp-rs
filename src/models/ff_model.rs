@@ -12,12 +12,7 @@ pub struct FFLayer {
 }
 
 impl FFLayer {
-    pub fn new(
-        in_features: usize,
-        out_features: usize,
-        varmap: &mut VarMap,
-        device: &Device,
-    ) -> CandleResult<Self> {
+    pub fn new(in_features: usize, out_features: usize, varmap: &mut VarMap, device: &Device, num_epochs: usize) -> CandleResult<Self> {
         let vb = VarBuilder::from_varmap(varmap, DType::F32, device);
         let linear = linear(in_features, out_features, vb.pp("linear"))?;
 
@@ -31,7 +26,7 @@ impl FFLayer {
             linear,
             opt,
             threshold: 2.0,
-            num_epochs: 1000,
+            num_epochs,
         })
     }
 
@@ -74,12 +69,12 @@ pub struct FFModel {
 }
 
 impl FFModel {
-    pub fn new(dims: &[usize], device: &Device) -> CandleResult<Self> {
+    pub fn new(dims: &[usize], device: &Device, num_epochs: usize) -> CandleResult<Self> {
         let mut layers = Vec::new();
         let mut varmaps = Vec::new();
         for i in 0..dims.len() - 1 {
             let mut varmap = VarMap::new();
-            let layer = FFLayer::new(dims[i], dims[i + 1], &mut varmap, device)?;
+            let layer = FFLayer::new(dims[i], dims[i + 1], &mut varmap, device, num_epochs)?;
             layers.push(layer);
             varmaps.push(varmap);
         }
@@ -99,6 +94,21 @@ impl FFModel {
     }
 
     pub fn predict(&self, inputs: &[Tensor]) -> CandleResult<Tensor> {
+        let mut best_scores = vec![0.0f32; inputs.len()];
+        
+        for (i, input) in inputs.iter().enumerate() {
+            let mut h = input.clone();
+            let mut total_goodness = 0.0;
+            
+            for layer in &self.layers {
+                h = layer.forward(&h)?;
+                let goodness = h.sqr()?.mean_keepdim(1)?.to_vec2::<f32>()?[0][0];
+                total_goodness += goodness;
+            }
+            best_scores[i] = total_goodness;
+        }
+        println!("Predict scores: {:?}", best_scores);
+
         let mut goodness_per_label = Vec::new();
         for x in inputs {
             let mut h = x.clone();

@@ -24,7 +24,13 @@ fn test_ff_logic_learning() {
     let device = Device::Cpu;
 
     // For XOR logic: 2 inputs. Let's make an input vector of 4 dimensions (2 for one-hot label, 2 for input).
-    let mut model = FFModel::new(&[4, 64, 32], &device).unwrap();
+    let input_size = 4;
+    let hidden_sizes = vec![64, 32];
+    let mut dims = vec![input_size];
+    dims.extend(hidden_sizes);
+    
+    // Explicitly configure 1000 epochs for the singular logic testing batch
+    let mut model = FFModel::new(&dims, &device, 1000).unwrap();
 
     let x_data = vec![
         0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,

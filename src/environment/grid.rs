@@ -27,7 +27,7 @@ impl Environment for GridEnvironment {
     }
 
     fn action_size(&self) -> usize {
-        5
+        4
     }
 
     fn state_bounds(&self) -> Option<Vec<usize>> {
@@ -48,10 +48,10 @@ impl Environment for GridEnvironment {
         let mut ny = self.player_y;
 
         match action_idx {
-            1 => ny -= 1, // Up
-            2 => ny += 1, // Down
-            3 => nx -= 1, // Left
-            4 => nx += 1, // Right
+            0 => ny -= 1, // Up
+            1 => ny += 1, // Down
+            2 => nx -= 1, // Left
+            3 => nx += 1, // Right
             _ => {}       // None
         }
 
@@ -70,10 +70,10 @@ impl Environment for GridEnvironment {
 
     fn apply_action(&mut self, action_idx: usize) -> Result<(), Box<dyn Error>> {
         match action_idx {
-            1 => self.player_y -= 1, // Up
-            2 => self.player_y += 1, // Down
-            3 => self.player_x -= 1, // Left
-            4 => self.player_x += 1, // Right
+            0 => self.player_y -= 1, // Up
+            1 => self.player_y += 1, // Down
+            2 => self.player_x -= 1, // Left
+            3 => self.player_x += 1, // Right
             _ => {}                  // None
         }
 

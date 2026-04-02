@@ -23,16 +23,17 @@ impl AlgorithmFF2 {
         hidden_sizes: Vec<usize>,
         device: Device,
     ) -> Result<Self, Box<dyn Error>> {
-        let input_size = state_size * 2 + 1;
+        let epochs_per_episode = 100;
+        let input_size = action_size + state_size * 2;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device).expect("Failed to create FFModel");
+        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
             n_episodes: 100,
             n_steps_per_episode: 50,
-            epochs_per_episode: 5,
+            epochs_per_episode,
             device,
         })
     }
@@ -69,6 +70,13 @@ impl Algorithm for AlgorithmFF2 {
 
             let mut total_reward = 0.0;
             let inference_start = Instant::now();
+            
+            // For Proposal B: define our "ideal" Goal State (max bounds if available, else 1.0 fallback)
+            let goal_state: Vec<f32> = if let Some(bounds) = env.state_bounds() {
+                bounds.iter().map(|&x| x as f32).collect()
+            } else {
+                vec![1.0; state_size]
+            };
 
             for _step in 0..self.n_steps_per_episode {
                 let current_state = env.get_state()?;
@@ -79,14 +87,20 @@ impl Algorithm for AlgorithmFF2 {
                 let mut action_inputs = Vec::new();
                 for a in 0..action_size {
                     total_inference_actions += 1;
-                    let mut input_vec = Vec::with_capacity(state_size * 2 + 1);
+                    
+                    // One-Hot Action Array
+                    let mut input_vec = vec![0.0f32; action_size];
+                    input_vec[a] = 1.0f32;
+                    
+                    // State Current
                     input_vec.extend(state_f32.iter());
-                    input_vec.extend(vec![0.0f32; state_size]);
-                    input_vec.push(a as f32);
+                    
+                    // State Goal (Proposal B instead of Zeros)
+                    input_vec.extend(goal_state.iter());
 
                     action_inputs.push(Tensor::from_vec(
                         input_vec,
-                        (1, state_size * 2 + 1),
+                        (1, action_size + state_size * 2),
                         &self.device,
                     )?);
                 }
@@ -149,29 +163,29 @@ impl Algorithm for AlgorithmFF2 {
                     let s_t_plus_m = &episode_states[t + m];
                     let a_t = episode_actions[t];
 
-                    let mut pos_input = Vec::with_capacity(state_size * 2 + 1);
+                    let mut pos_input = vec![0.0f32; action_size];
+                    pos_input[a_t] = 1.0f32;
                     pos_input.extend(s_t.clone());
                     pos_input.extend(s_t_plus_m.clone());
-                    pos_input.push(a_t as f32);
 
                     let neg_m = rng.gen_range(0..n_states);
-                    let mut neg_input1 = Vec::with_capacity(state_size * 2 + 1);
+                    let mut neg_input1 = vec![0.0f32; action_size];
+                    neg_input1[a_t] = 1.0f32;
                     neg_input1.extend(s_t.clone());
                     neg_input1.extend(episode_states[neg_m].clone());
-                    neg_input1.push(a_t as f32);
 
                     let mut a_star = rng.gen_range(0..action_size);
                     if a_star == a_t {
                         a_star = (a_star + 1) % action_size;
                     }
-                    let mut neg_input2 = Vec::with_capacity(state_size * 2 + 1);
+                    let mut neg_input2 = vec![0.0f32; action_size];
+                    neg_input2[a_star] = 1.0f32;
                     neg_input2.extend(s_t.clone());
                     neg_input2.extend(s_t_plus_m.clone());
-                    neg_input2.push(a_star as f32);
 
-                    let p_t = Tensor::from_vec(pos_input, (1, state_size * 2 + 1), &self.device)?;
-                    let n1_t = Tensor::from_vec(neg_input1, (1, state_size * 2 + 1), &self.device)?;
-                    let n2_t = Tensor::from_vec(neg_input2, (1, state_size * 2 + 1), &self.device)?;
+                    let p_t = Tensor::from_vec(pos_input, (1, action_size + state_size * 2), &self.device)?;
+                    let n1_t = Tensor::from_vec(neg_input1, (1, action_size + state_size * 2), &self.device)?;
+                    let n2_t = Tensor::from_vec(neg_input2, (1, action_size + state_size * 2), &self.device)?;
                     
                     train_data.push((p_t.clone(), n1_t));
                     train_data.push((p_t.clone(), n2_t));
