@@ -1,7 +1,7 @@
 use super::Algorithm;
 use crate::environment::Environment;
 use crate::models::ff_model::FFModel;
-use crate::visualization::{RuntimeStats, VisualizationState};
+use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
@@ -46,8 +46,8 @@ impl Algorithm for AlgorithmFF2 {
         _visualize: bool,
         vis_state: Option<Arc<Mutex<VisualizationState>>>,
     ) -> Result<(), Box<dyn Error>> {
-        let mut total_iteration = 0;
-        let start_time = Instant::now();
+        let mut _total_iteration = 0;
+        let _start_time = Instant::now();
         let mut total_inference_time = Duration::new(0, 0);
         let mut total_inference_actions: usize = 0;
         let mut total_training_time = Duration::new(0, 0);
@@ -147,7 +147,10 @@ impl Algorithm for AlgorithmFF2 {
 
             if let Some(ref vis_state_arc) = vis_state {
                 if let Ok(mut state) = vis_state_arc.try_lock() {
-                    state.epoch_rewards.push((episode, total_rewards[0] as f32));
+                    let avg_reward = total_rewards[0] as f32 / self.n_steps_per_episode as f32;
+                    state.epoch_rewards.push((episode, avg_reward));
+                    state.runtime_stats.epoch = episode;
+                    state.total_epochs = self.n_episodes;
                 }
             }
 
@@ -213,7 +216,7 @@ impl Algorithm for AlgorithmFF2 {
                 let pos_batch = Tensor::cat(&pos_tensors, 0)?;
                 let neg_batch = Tensor::cat(&neg_tensors, 0)?;
                 self.model.train(&pos_batch, &neg_batch)?;
-                total_iteration += 1;
+                _total_iteration += 1;
             }
 
             let training_elapsed = training_start.elapsed();

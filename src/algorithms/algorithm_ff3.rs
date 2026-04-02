@@ -3,11 +3,12 @@ use crate::environment::Environment;
 use crate::models::ff_model::FFModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
+use rand::Rng;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub struct AlgorithmFF1 {
+pub struct AlgorithmFF3 {
     pub model: FFModel,
     pub n_episodes: usize,
     pub n_steps_per_episode: usize,
@@ -15,7 +16,7 @@ pub struct AlgorithmFF1 {
     pub device: Device,
 }
 
-impl AlgorithmFF1 {
+impl AlgorithmFF3 {
     pub fn new(
         state_size: usize,
         action_size: usize,
@@ -38,7 +39,7 @@ impl AlgorithmFF1 {
     }
 }
 
-impl Algorithm for AlgorithmFF1 {
+impl Algorithm for AlgorithmFF3 {
     fn run(
         &mut self,
         env: &mut dyn Environment,
@@ -46,7 +47,6 @@ impl Algorithm for AlgorithmFF1 {
         vis_state: Option<Arc<Mutex<VisualizationState>>>,
     ) -> Result<(), Box<dyn Error>> {
         let mut _total_iteration = 0;
-        let _start_time = Instant::now();
         let mut total_inference_time = Duration::new(0, 0);
         let mut total_inference_actions: usize = 0;
         let mut total_training_time = Duration::new(0, 0);
@@ -68,7 +68,8 @@ impl Algorithm for AlgorithmFF1 {
             }
             std::thread::sleep(Duration::from_millis(50)); // wait for environment to settle
             
-            let mut episode_data = Vec::new();
+            // Format: episode_data[env_idx] = vec of (state_f32, action)
+            let mut episode_data: Vec<Vec<(Vec<f32>, usize)>> = vec![Vec::new(); n_envs];
             let mut total_rewards = vec![0.0; n_envs];
 
             let inference_start = Instant::now();
@@ -100,25 +101,12 @@ impl Algorithm for AlgorithmFF1 {
                 for (env_idx, action) in best_actions.into_iter().enumerate() {
                     let e = &mut envs[env_idx];
                     let current_state = &current_states[env_idx];
-
-                    let mut step_actions = Vec::new();
-                    for a in 0..action_size {
-                        let reward = e.evaluate_action(current_state, a);
-                        let action_tensor = all_action_inputs[env_idx * action_size + a].clone();
-                        step_actions.push((a, action_tensor, reward));
-                    }
-
-                    if env_idx == 0 {
-                        // println!("best action on tracking env: {}", action);
-                    }
+                    
+                    let state_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();
+                    episode_data[env_idx].push((state_f32, action));
 
                     total_rewards[env_idx] += e.evaluate_action(current_state, action);
                     e.apply_action(action)?;
-
-                    step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
-                    let worst_tensor = step_actions.first().unwrap().1.clone();
-                    let best_tensor = step_actions.last().unwrap().1.clone();
-                    episode_data.push((best_tensor, worst_tensor));
                 }
                 
                 std::thread::sleep(Duration::from_millis(10));
@@ -156,23 +144,50 @@ impl Algorithm for AlgorithmFF1 {
                 }
             }
 
-            println!("Training phase");
+            println!("Training phase: Probabilistic CEM Ranking");
 
-            // Train on collected episode data
             let training_start = Instant::now();
             let mut pos_tensors = Vec::new();
             let mut neg_tensors = Vec::new();
 
-            for (pos_t, neg_t) in &episode_data {
-                pos_tensors.push(pos_t.clone());
-                neg_tensors.push(neg_t.clone());
+            // 1. Sort environments by reward (lowest to highest)
+            let mut env_ranks: Vec<(usize, f64)> = total_rewards.iter().copied().enumerate().collect();
+            env_ranks.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+            let mut rng = rand::thread_rng();
+            let k = n_envs as f32;
+
+            for (rank, &(env_idx, _r)) in env_ranks.iter().enumerate() {
+                // r = 0..15 -> 0% .. 100%
+                let p_pos = rank as f32 / (k - 1.0);
+                
+                for (state, action) in &episode_data[env_idx] {
+                    let mut input_vec = vec![0.0; action_size];
+                    input_vec[*action] = 1.0;
+                    input_vec.extend(state.iter().copied());
+                    
+                    let tensor = Tensor::from_vec(input_vec, (1, action_size + state_size), &self.device)?;
+                    
+                    let rand_val: f32 = rng.r#gen();
+                    if rand_val < p_pos {
+                        pos_tensors.push(tensor);
+                    } else {
+                        neg_tensors.push(tensor);
+                    }
+                }
             }
 
-            if !pos_tensors.is_empty() {
+            if !pos_tensors.is_empty() && !neg_tensors.is_empty() {
+                println!(
+                    "Rank partitioning created: {} positive / {} negative samples",
+                    pos_tensors.len(), neg_tensors.len()
+                );
                 let pos_batch = Tensor::cat(&pos_tensors, 0)?;
                 let neg_batch = Tensor::cat(&neg_tensors, 0)?;
                 self.model.train(&pos_batch, &neg_batch)?;
                 _total_iteration += 1;
+            } else {
+                println!("Warning: Skipping batch training (batch imbalance). Pos: {}, Neg: {}", pos_tensors.len(), neg_tensors.len());
             }
 
             let training_elapsed = training_start.elapsed();

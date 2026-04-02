@@ -3,6 +3,7 @@ pub mod algorithm2;
 pub mod algorithm3;
 pub mod algorithm_ff1;
 pub mod algorithm_ff2;
+pub mod algorithm_ff3;
 
 use crate::environment::Environment;
 use crate::visualization::VisualizationState;
