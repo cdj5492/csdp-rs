@@ -41,8 +41,8 @@ impl Environment for GridEnvironment {
 
     fn get_state(&mut self) -> Result<Vec<f64>, Box<dyn Error>> {
         Ok(vec![
-            self.player_x as f64,
-            self.player_y as f64,
+            (self.player_x - self.goal_x) as f64,
+            (self.player_y - self.goal_y) as f64,
             self.goal_x as f64,
             self.goal_y as f64,
         ])

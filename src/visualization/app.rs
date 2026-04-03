@@ -605,8 +605,8 @@ impl eframe::App for NeuralNetworkVisualizerApp {
 
                         if env_state.len() == 4 {
                             // Grid visualization
-                            let px = env_state[0] as f32;
-                            let py = env_state[1] as f32;
+                            let px = (env_state[0] + env_state[2]) as f32;
+                            let py = (env_state[1] + env_state[3]) as f32;
                             let gx = env_state[2] as f32;
                             let gy = env_state[3] as f32;
 

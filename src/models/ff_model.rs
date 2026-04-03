@@ -125,4 +125,22 @@ impl FFModel {
         
         Ok(best_indices)
     }
+
+    pub fn predict_scores(&self, inputs: &[Tensor]) -> CandleResult<Vec<f32>> {
+        if inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        let batched_inputs = Tensor::cat(inputs, 0)?;
+        let mut h = batched_inputs;
+        let mut total_goodnesses = Tensor::zeros((inputs.len(),), candle_core::DType::F32, inputs[0].device())?;
+        
+        for layer in &self.layers {
+            h = layer.forward(&h)?;
+            let goodness = h.sqr()?.mean_keepdim(1)?.squeeze(1)?;
+            total_goodnesses = total_goodnesses.broadcast_add(&goodness)?;
+        }
+        
+        total_goodnesses.to_vec1()
+    }
 }

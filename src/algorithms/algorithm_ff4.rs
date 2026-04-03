@@ -3,11 +3,12 @@ use crate::environment::Environment;
 use crate::models::ff_model::FFModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
+use rand::Rng;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub struct AlgorithmFF1 {
+pub struct AlgorithmFF4 {
     pub model: FFModel,
     pub n_episodes: usize,
     pub n_steps_per_episode: usize,
@@ -15,7 +16,7 @@ pub struct AlgorithmFF1 {
     pub device: Device,
 }
 
-impl AlgorithmFF1 {
+impl AlgorithmFF4 {
     pub fn new(
         state_size: usize,
         action_size: usize,
@@ -26,19 +27,20 @@ impl AlgorithmFF1 {
         let epochs_per_episode = 100;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
+        let model =
+            FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
-            n_episodes: 100,
-            n_steps_per_episode: 50,
+            n_episodes: 50,
+            n_steps_per_episode: 70,
             epochs_per_episode,
             device,
         })
     }
 }
 
-impl Algorithm for AlgorithmFF1 {
+impl Algorithm for AlgorithmFF4 {
     fn run(
         &mut self,
         env: &mut dyn Environment,
@@ -46,15 +48,14 @@ impl Algorithm for AlgorithmFF1 {
         vis_state: Option<Arc<Mutex<VisualizationState>>>,
     ) -> Result<(), Box<dyn Error>> {
         let mut _total_iteration = 0;
-        let _start_time = Instant::now();
         let mut total_inference_time = Duration::new(0, 0);
         let mut total_inference_actions: usize = 0;
         let mut total_training_time = Duration::new(0, 0);
         let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
-        
-        let n_envs = 200;
+
+        let n_envs = 50;
         let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
         for _ in 1..n_envs {
             envs.push(env.clone_box());
@@ -66,12 +67,15 @@ impl Algorithm for AlgorithmFF1 {
             for e in envs.iter_mut() {
                 e.reset()?;
             }
-            std::thread::sleep(Duration::from_millis(50)); // wait for environment to settle
-            
-            let mut episode_data = Vec::new();
-            let mut total_rewards = vec![0.0; n_envs];
+
+            let mut episode_data: Vec<Vec<(Vec<f32>, usize, f32)>> = vec![Vec::new(); n_envs];
+            let mut raw_rewards = vec![0.0; n_envs];
 
             let inference_start = Instant::now();
+            let mut rng = rand::thread_rng();
+
+            let tau = f32::max(0.05, 1.0 - (episode as f32 / self.n_episodes as f32) * 0.95);
+            // let tau = 0.1;
 
             for _step in 0..self.n_steps_per_episode {
                 let mut current_states = Vec::new();
@@ -95,33 +99,46 @@ impl Algorithm for AlgorithmFF1 {
                     }
                 }
 
-                let best_actions = self.model.predict(&all_action_inputs, action_size)?;
+                let goodness_scores = self.model.predict_scores(&all_action_inputs)?;
 
-                for (env_idx, action) in best_actions.into_iter().enumerate() {
+                for (env_idx, env_state) in current_states.iter().enumerate() {
                     let e = &mut envs[env_idx];
-                    let current_state = &current_states[env_idx];
+                    let chunk_start = env_idx * action_size;
+                    let chunk_scores = &goodness_scores[chunk_start..chunk_start + action_size];
 
-                    let mut step_actions = Vec::new();
-                    for a in 0..action_size {
-                        let reward = e.evaluate_action(current_state, a);
-                        let action_tensor = all_action_inputs[env_idx * action_size + a].clone();
-                        step_actions.push((a, action_tensor, reward));
+                    let max_g = chunk_scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+                    let mut exp_sum = 0.0;
+                    let exps: Vec<f32> = chunk_scores
+                        .iter()
+                        .map(|&g| {
+                            let e_val = ((g - max_g) / tau).exp();
+                            exp_sum += e_val;
+                            e_val
+                        })
+                        .collect();
+
+                    let rand_val: f32 = rng.r#gen::<f32>() * exp_sum;
+                    let mut cumulative = 0.0;
+                    let mut selected_action = action_size - 1;
+
+                    for (a, &e_val) in exps.iter().enumerate() {
+                        cumulative += e_val;
+                        if rand_val <= cumulative {
+                            selected_action = a;
+                            break;
+                        }
                     }
 
-                    if env_idx == 0 {
-                        // println!("best action on tracking env: {}", action);
-                    }
+                    let state_f32: Vec<f32> = env_state.iter().map(|&x| x as f32 / 50.0).collect();
+                    let step_reward = e.evaluate_action(env_state, selected_action);
 
-                    total_rewards[env_idx] += e.evaluate_action(current_state, action);
-                    e.apply_action(action)?;
+                    episode_data[env_idx].push((state_f32, selected_action, step_reward as f32));
+                    raw_rewards[env_idx] += step_reward;
 
-                    step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
-                    let worst_tensor = step_actions.first().unwrap().1.clone();
-                    let best_tensor = step_actions.last().unwrap().1.clone();
-                    episode_data.push((best_tensor, worst_tensor));
+                    e.apply_action(selected_action)?;
                 }
-                
-                std::thread::sleep(Duration::from_millis(10));
+
 
                 if let Some(ref vis_state_arc) = vis_state {
                     if let Ok(mut state) = vis_state_arc.try_lock() {
@@ -142,37 +159,97 @@ impl Algorithm for AlgorithmFF1 {
                         std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                 }
-            } // end of inference steps
+            }
 
             let inference_elapsed = inference_start.elapsed();
             total_inference_time += inference_elapsed;
 
             if let Some(ref vis_state_arc) = vis_state {
                 if let Ok(mut state) = vis_state_arc.try_lock() {
-                    let avg_reward = total_rewards[0] as f32 / self.n_steps_per_episode as f32;
+                    let avg_reward =
+                        raw_rewards.iter().sum::<f64>() as f32 / self.n_steps_per_episode as f32;
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
                 }
             }
 
-            println!("Training phase");
+            println!("Training phase: Temporal Contrastive RL");
 
-            // Train on collected episode data
             let training_start = Instant::now();
             let mut pos_tensors = Vec::new();
             let mut neg_tensors = Vec::new();
 
-            for (pos_t, neg_t) in &episode_data {
-                pos_tensors.push(pos_t.clone());
-                neg_tensors.push(neg_t.clone());
+            let gamma = 0.99f32;
+
+            for env_idx in 0..n_envs {
+                let seq = &mut episode_data[env_idx];
+                let mut current_r = 0.0;
+                for t in (0..seq.len()).rev() {
+                    current_r = seq[t].2 + gamma * current_r;
+                    seq[t] = (seq[t].0.clone(), seq[t].1, current_r);
+                }
             }
 
-            if !pos_tensors.is_empty() {
+            for t in 0..self.n_steps_per_episode {
+                let mut step_sum = 0.0;
+                for env_idx in 0..n_envs {
+                    if t < episode_data[env_idx].len() {
+                        step_sum += episode_data[env_idx][t].2;
+                    }
+                }
+                let step_baseline = step_sum / n_envs as f32;
+
+                for env_idx in 0..n_envs {
+                    if t >= episode_data[env_idx].len() {
+                        continue;
+                    }
+
+                    let (state, action, r_t) = &episode_data[env_idx][t];
+                    let a_t = *r_t - step_baseline;
+
+                    let mut input_vec = vec![0.0; action_size];
+                    input_vec[*action] = 1.0;
+                    input_vec.extend(state.iter().copied());
+                    let tensor =
+                        Tensor::from_vec(input_vec, (1, action_size + state_size), &self.device)?;
+
+                    if a_t > 0.0 {
+                        pos_tensors.push(tensor);
+
+                        let mut a_random = rng.r#gen_range(0..action_size);
+                        if a_random == *action {
+                            a_random = (a_random + 1) % action_size;
+                        }
+
+                        // let mut neg_vec = vec![0.0; action_size];
+                        // neg_vec[a_random] = 1.0;
+                        // neg_vec.extend(state.iter().copied());
+                        // let neg_tensor =
+                        //     Tensor::from_vec(neg_vec, (1, action_size + state_size), &self.device)?;
+
+                        // neg_tensors.push(neg_tensor);
+                    } else {
+                        neg_tensors.push(tensor);
+                    }
+                }
+            }
+
+            let min_len = std::cmp::min(pos_tensors.len(), neg_tensors.len());
+
+            if min_len > 0 {
+                pos_tensors.truncate(min_len);
+                neg_tensors.truncate(min_len);
+
+                println!("Advantage Selection: Balanced Batch Size: {}", min_len);
+
                 let pos_batch = Tensor::cat(&pos_tensors, 0)?;
                 let neg_batch = Tensor::cat(&neg_tensors, 0)?;
+
                 self.model.train(&pos_batch, &neg_batch)?;
                 _total_iteration += 1;
+            } else {
+                println!("Warning: Skipping batch training (not enough paired samples).");
             }
 
             let training_elapsed = training_start.elapsed();
@@ -191,7 +268,10 @@ impl Algorithm for AlgorithmFF1 {
             };
             println!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, total_rewards[0], inf_aps, ep_s
+                episode,
+                raw_rewards.iter().sum::<f64>(),
+                inf_aps,
+                ep_s
             );
         }
 

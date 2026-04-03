@@ -22,40 +22,38 @@ fn overlay_y_on_x(x: &Tensor, y: &[usize], num_classes: usize) -> candle_core::R
 #[test]
 fn test_ff_logic_learning() {
     let device = Device::Cpu;
-
-    // For XOR logic: 2 inputs. Let's make an input vector of 4 dimensions (2 for one-hot label, 2 for input).
     let input_size = 4;
     let hidden_sizes = vec![64, 32];
     let mut dims = vec![input_size];
     dims.extend(hidden_sizes);
     
-    // Explicitly configure 1000 epochs for the singular logic testing batch
     let mut model = FFModel::new(&dims, &device, 1000).unwrap();
 
     let x_data = vec![
-        0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,
-    ]; // shape [4, 4]
-
+        0.0f32, 0.0, 0.0, 0.0, 
+        0.0, 0.0, 0.0, 1.0, 
+        0.0, 0.0, 1.0, 0.0, 
+        0.0, 0.0, 1.0, 1.0,
+    ]; 
     let y_data = vec![0, 1, 1, 0];
-
-    let x = Tensor::from_vec(x_data.clone(), (4, 4), &device).unwrap();
+    let x = Tensor::from_vec(x_data, (4, 4), &device).unwrap();
 
     let x_pos = overlay_y_on_x(&x, &y_data, 2).unwrap();
     let neg_y_data: Vec<usize> = y_data.iter().map(|&y| 1 - y).collect();
     let x_neg = overlay_y_on_x(&x, &neg_y_data, 2).unwrap();
 
-    // Train the model
     model.train(&x_pos, &x_neg).unwrap();
 
-    // Test the model
-    let input_c0 = overlay_y_on_x(&x, &vec![0; 4], 2).unwrap();
-    let input_c1 = overlay_y_on_x(&x, &vec![1; 4], 2).unwrap();
-
-    // Let's create combinations: one pos, one neg
-    let inputs = vec![input_c0.clone(), input_c1.clone()];
+    let mut prediction_inputs = Vec::new();
+    for i in 0..4 {
+        let sample = x.narrow(0, i, 1).unwrap();
+        for label in 0..2 {
+            prediction_inputs.push(overlay_y_on_x(&sample, &[label], 2).unwrap());
+        }
+    }
     
-    // Test inference via chunk_size
-    let best_classes = model.predict(&inputs, 2).unwrap();
+    let best_classes = model.predict(&prediction_inputs, 2).unwrap();
     
-    println!("Best class selected per batch: {:?}", best_classes);
+    println!("Predicted: {:?}", best_classes);
+    assert_eq!(best_classes, y_data);
 }
