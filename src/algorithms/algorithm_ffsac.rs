@@ -1,24 +1,24 @@
-// closest to contrastive Q learning or self-imitation learning
 use super::Algorithm;
 use crate::environment::Environment;
 use crate::models::ff_model::FFModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
+use rand::seq::SliceRandom;
 use rand::Rng;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub struct AlgorithmFF4 {
+pub struct AlgorithmFFSAC {
     pub model: FFModel,
     pub n_episodes: usize,
     pub n_steps_per_episode: usize,
     pub epochs_per_episode: usize,
     pub device: Device,
-    pub buffer: Vec<(Vec<f32>, usize, f32)>, // state, action, reward
+    pub buffer: Vec<(Vec<f32>, usize, f32, Vec<f32>)>,
 }
 
-impl AlgorithmFF4 {
+impl AlgorithmFFSAC {
     pub fn new(
         state_size: usize,
         action_size: usize,
@@ -29,8 +29,7 @@ impl AlgorithmFF4 {
         let epochs_per_episode = 100;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model =
-            FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
+        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
@@ -43,7 +42,7 @@ impl AlgorithmFF4 {
     }
 }
 
-impl Algorithm for AlgorithmFF4 {
+impl Algorithm for AlgorithmFFSAC {
     fn run(
         &mut self,
         env: &mut dyn Environment,
@@ -57,12 +56,15 @@ impl Algorithm for AlgorithmFF4 {
         let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
-
+        
         let n_envs = 16;
         let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
         for _ in 1..n_envs {
             envs.push(env.clone_box());
         }
+
+        let gamma = 0.99f32;
+        let tau = 0.1f32; 
 
         for episode in 1..=self.n_episodes {
             println!("starting vectorized episode {} (x{})", episode, n_envs);
@@ -70,15 +72,11 @@ impl Algorithm for AlgorithmFF4 {
             for e in envs.iter_mut() {
                 e.reset()?;
             }
-
-            let mut episode_data: Vec<Vec<(Vec<f32>, usize, f32)>> = vec![Vec::new(); n_envs];
+            std::thread::sleep(Duration::from_millis(50));
+            
             let mut raw_rewards = vec![0.0; n_envs];
-
             let inference_start = Instant::now();
             let mut rng = rand::thread_rng();
-
-            let tau = f32::max(0.05, 0.25 - (episode as f32 / self.n_episodes as f32) * 0.2);
-            // let tau = 0.1;
 
             for _step in 0..self.n_steps_per_episode {
                 let mut current_states = Vec::new();
@@ -88,7 +86,7 @@ impl Algorithm for AlgorithmFF4 {
 
                 let mut all_action_inputs = Vec::new();
                 for state in current_states.iter() {
-                    let state_f32: Vec<f32> = state.iter().map(|&x| x as f32).collect();
+                    let state_f32: Vec<f32> = state.iter().map(|&x| (x as f32) / 50.0).collect();
                     for a in 0..action_size {
                         let mut input_vec = vec![0.0; action_size];
                         input_vec[a] = 1.0;
@@ -103,36 +101,25 @@ impl Algorithm for AlgorithmFF4 {
                 }
 
                 let goodness_scores = self.model.predict_scores(&all_action_inputs)?;
-
+                
                 for (env_idx, env_state) in current_states.iter().enumerate() {
                     let e = &mut envs[env_idx];
                     let chunk_start = env_idx * action_size;
                     let chunk_scores = &goodness_scores[chunk_start..chunk_start + action_size];
-
-                    if episode % 10 == 0 && _step == 0 && env_idx == 0 {
-                        let chunk = &goodness_scores[0..action_size];
-                        println!("Ep {} Step 0 | Goodness Scores: {:.4?}", episode, chunk);
-                    }
-
-                    let max_g = chunk_scores
-                        .iter()
-                        .cloned()
-                        .fold(f32::NEG_INFINITY, f32::max);
-
+                    
+                    let max_g = chunk_scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    
                     let mut exp_sum = 0.0;
-                    let exps: Vec<f32> = chunk_scores
-                        .iter()
-                        .map(|&g| {
-                            let e_val = ((g - max_g) / tau).exp();
-                            exp_sum += e_val;
-                            e_val
-                        })
-                        .collect();
-
+                    let exps: Vec<f32> = chunk_scores.iter().map(|&g| {
+                        let e_val = ((g - max_g) / tau).exp();
+                        exp_sum += e_val;
+                        e_val
+                    }).collect();
+                    
                     let rand_val: f32 = rng.r#gen::<f32>() * exp_sum;
                     let mut cumulative = 0.0;
                     let mut selected_action = action_size - 1;
-
+                    
                     for (a, &e_val) in exps.iter().enumerate() {
                         cumulative += e_val;
                         if rand_val <= cumulative {
@@ -140,33 +127,22 @@ impl Algorithm for AlgorithmFF4 {
                             break;
                         }
                     }
-
-                    let state_f32: Vec<f32> = env_state.iter().map(|&x| x as f32 / 50.0).collect();
+                    
+                    let state_f32: Vec<f32> = env_state.iter().map(|&x| (x as f32) / 50.0).collect();
                     let step_reward = e.evaluate_action(env_state, selected_action);
-
-                    episode_data[env_idx].push((state_f32, selected_action, step_reward as f32));
-                    raw_rewards[env_idx] += step_reward;
-
+                    
                     e.apply_action(selected_action)?;
+                    let next_state = e.get_state()?;
+                    let next_state_f32: Vec<f32> = next_state.iter().map(|&x| (x as f32) / 50.0).collect();
+                    
+                    self.buffer.push((state_f32, selected_action, step_reward as f32, next_state_f32));
+                    raw_rewards[env_idx] += step_reward;
                 }
-
+                
                 if let Some(ref vis_state_arc) = vis_state {
                     if let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = envs[0].get_state()?;
                         state.environment_state = Some(env_state);
-                    }
-                }
-
-                if let Some(ref vis_state_arc) = vis_state {
-                    loop {
-                        let is_paused = vis_state_arc
-                            .try_lock()
-                            .map(|state| state.is_paused)
-                            .unwrap_or(false);
-                        if !is_paused {
-                            break;
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                 }
             }
@@ -176,74 +152,99 @@ impl Algorithm for AlgorithmFF4 {
 
             if let Some(ref vis_state_arc) = vis_state {
                 if let Ok(mut state) = vis_state_arc.try_lock() {
-                    let avg_reward =
-                        raw_rewards.iter().sum::<f64>() as f32 / self.n_steps_per_episode as f32;
+                    let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / (n_envs as f32 * self.n_steps_per_episode as f32);
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
                 }
             }
 
-            println!("Training phase: Temporal Contrastive RL");
-
-            let gamma = 0.99f32;
-
-            for env_idx in 0..n_envs {
-                let seq = &mut episode_data[env_idx];
-                let mut current_r = 0.0;
-                for t in (0..seq.len()).rev() {
-                    current_r = seq[t].2 + gamma * current_r;
-                    seq[t] = (seq[t].0.clone(), seq[t].1, current_r);
-                }
-                for item in seq.iter() {
-                    self.buffer.push(item.clone());
-                }
-            }
-
-            if self.buffer.len() > 200000 {
-                println!("Draining replay buffer...");
-                let drain_count = self.buffer.len() - 200000;
+            if self.buffer.len() > 50000 {
+                let drain_count = self.buffer.len() - 50000;
                 self.buffer.drain(0..drain_count);
             }
 
             let training_start = Instant::now();
-
-            if self.buffer.len() >= 1000 {
-                let mut sorted_indices: Vec<usize> = (0..self.buffer.len()).collect();
-                // Sort ascending: index 0 is worst, index len-1 is best
-                sorted_indices.sort_unstable_by(|&a, &b| self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap());
-
-                let batch_size = std::cmp::min(256, self.buffer.len() / 4);
+            let batch_size = 256;
+            
+            if self.buffer.len() >= batch_size {
                 let mut pos_tensors = Vec::new();
                 let mut neg_tensors = Vec::new();
 
-                for i in 0..batch_size {
-                    // Grab the best successful transitions
-                    let best = &self.buffer[sorted_indices[sorted_indices.len() - 1 - i]];
+                let mut indices: Vec<usize> = (0..self.buffer.len()).collect();
+                indices.shuffle(&mut rng);
+                let batch_indices = &indices[0..batch_size];
 
-                    // Positive Sample: The state + the action actually taken
-                    let mut p_vec = vec![0.0; action_size];
-                    p_vec[best.1] = 1.0;
-                    p_vec.extend(best.0.iter().copied());
-                    pos_tensors.push(Tensor::from_vec(p_vec, (1, action_size + state_size), &self.device)?);
+                let mut current_eval_inputs = Vec::new();
+                let mut next_eval_inputs = Vec::new();
 
-                    // Negative Sample: The EXACT SAME state + a random alternative action
-                    let mut a_random = rng.r#gen_range(0..action_size);
-                    if a_random == best.1 {
-                        a_random = (a_random + 1) % action_size;
+                for &idx in batch_indices {
+                    let (s, a, _r, s_next) = &self.buffer[idx];
+                    
+                    let mut c_vec = vec![0.0; action_size];
+                    c_vec[*a] = 1.0;
+                    c_vec.extend(s.iter().copied());
+                    current_eval_inputs.push(Tensor::from_vec(c_vec, (1, action_size + state_size), &self.device)?);
+
+                    for next_a in 0..action_size {
+                        let mut n_vec = vec![0.0; action_size];
+                        n_vec[next_a] = 1.0;
+                        n_vec.extend(s_next.iter().copied());
+                        next_eval_inputs.push(Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?);
                     }
-                    let mut n_vec = vec![0.0; action_size];
-                    n_vec[a_random] = 1.0;
-                    n_vec.extend(best.0.iter().copied());
-                    neg_tensors.push(Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?);
                 }
 
-                let pos_batch = Tensor::cat(&pos_tensors, 0)?;
-                let neg_batch = Tensor::cat(&neg_tensors, 0)?;
-                
-                self.model.train(&pos_batch, &neg_batch)?;
-                _total_iteration += 1;
-                total_epochs += self.epochs_per_episode;
+                let current_scores = self.model.predict_scores(&current_eval_inputs)?;
+                let next_scores_flat = self.model.predict_scores(&next_eval_inputs)?;
+
+                for (i, &idx) in batch_indices.iter().enumerate() {
+                    let (s, a, r, _s_next) = &self.buffer[idx];
+                    let current_g = current_scores[i];
+                    
+                    let n_start = i * action_size;
+                    let next_g_chunk = &next_scores_flat[n_start..n_start + action_size];
+                    
+                    let max_next_g = next_g_chunk.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    let mut sum_exp = 0.0;
+                    for &g in next_g_chunk {
+                        sum_exp += ((g - max_next_g) / tau).exp();
+                    }
+                    let v_next = tau * sum_exp.ln() + max_next_g;
+                    
+                    let target_g = r + gamma * v_next;
+                    let delta = target_g - current_g;
+
+                    let mut a_random = rng.r#gen_range(0..action_size);
+                    if a_random == *a {
+                        a_random = (a_random + 1) % action_size;
+                    }
+
+                    let mut p_vec = vec![0.0; action_size];
+                    p_vec[*a] = 1.0;
+                    p_vec.extend(s.iter().copied());
+                    let t_actual = Tensor::from_vec(p_vec, (1, action_size + state_size), &self.device)?;
+
+                    let mut n_vec = vec![0.0; action_size];
+                    n_vec[a_random] = 1.0;
+                    n_vec.extend(s.iter().copied());
+                    let t_random = Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?;
+
+                    if delta > 0.1 {
+                        pos_tensors.push(t_actual);
+                        neg_tensors.push(t_random);
+                    } else if delta < -0.1 {
+                        neg_tensors.push(t_actual);
+                        pos_tensors.push(t_random);
+                    }
+                }
+
+                if !pos_tensors.is_empty() {
+                    let pos_batch = Tensor::cat(&pos_tensors, 0)?;
+                    let neg_batch = Tensor::cat(&neg_tensors, 0)?;
+                    self.model.train(&pos_batch, &neg_batch)?;
+                    _total_iteration += 1;
+                    total_epochs += self.epochs_per_episode;
+                }
             }
 
             let training_elapsed = training_start.elapsed();
@@ -261,11 +262,7 @@ impl Algorithm for AlgorithmFF4 {
             };
             println!(
                 "[Episode {} Tracking Env Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
-                episode,
-                raw_rewards.iter().sum::<f64>(),
-                inf_aps,
-                ep_s,
-                self.buffer.len()
+                episode, raw_rewards.iter().sum::<f64>(), inf_aps, ep_s, self.buffer.len()
             );
         }
 
