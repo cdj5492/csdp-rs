@@ -253,6 +253,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     }
 
+    if let Some((_, ref vis_state_arc)) = vis_handle {
+        loop {
+            let is_paused = vis_state_arc
+                .try_lock()
+                .map(|state| state.is_paused)
+                .unwrap_or(false);
+            if is_paused {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
     // Signal visualization to close and wait for thread
     if let Some((handle, vis_state)) = vis_handle {
         println!("Closing visualization...");

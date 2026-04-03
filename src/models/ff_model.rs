@@ -17,7 +17,7 @@ impl FFLayer {
         let linear = linear(in_features, out_features, vb.pp("linear"))?;
 
         let params = ParamsAdamW {
-            lr: 0.03,
+            lr: 0.001,
             ..Default::default()
         };
         let opt = AdamW::new(varmap.all_vars(), params)?;
@@ -34,7 +34,7 @@ impl FFLayer {
         let norm = x.sqr()?.sum_keepdim(1)?.sqrt()?;
         let x_direction = x.broadcast_div(&(norm + 1e-4)?)?;
         let out = self.linear.forward(&x_direction)?;
-        out.relu()
+        out.gelu()
     }
 
     pub fn train(&mut self, x_pos: &Tensor, x_neg: &Tensor, layer_idx: usize) -> CandleResult<(Tensor, Tensor)> {
