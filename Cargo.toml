@@ -17,6 +17,10 @@ path = "src/tools/playback_training_data.rs"
 name = "teleoperate"
 path = "src/tools/teleoperate.rs"
 
+[[bin]]
+name = "thing"
+path = "src/test_rlsim.rs"
+
 [dependencies]
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.2-alpha.2", features = [
   "cuda",
@@ -37,6 +41,7 @@ eframe = "0.31"
 egui = "0.31"
 winit = "0.30"
 intel-mkl-src = { version = "0.8.1", optional = true }
+rocketsim_rs = "0.36.0"
 
 [features]
 mkl = ["dep:intel-mkl-src", "candle-core/mkl", "candle-nn/mkl"]

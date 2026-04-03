@@ -128,6 +128,22 @@ impl VisualizationState {
         // Update synapses completely (they don't have animated state)
         self.model_structure.synapses = snapshot.synapses;
     }
+
+    /// Save the epoch rewards (graph values) to a CSV file for later analysis
+    pub fn save_graphs_to_csv(&self, path: &std::path::Path) -> std::io::Result<()> {
+        use std::io::Write;
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+        let mut file = std::fs::File::create(path)?;
+        writeln!(file, "epoch,reward")?;
+        for (epoch, reward) in &self.epoch_rewards {
+            writeln!(file, "{},{}", epoch, reward)?;
+        }
+        Ok(())
+    }
 }
 
 /// Start the visualization in a separate thread

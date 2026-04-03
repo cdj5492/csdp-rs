@@ -27,10 +27,16 @@ use algorithms::algorithm3::Algorithm3;
 use environment::Environment;
 use visualization::VisualizationState;
 
-fn parse_args() -> (bool, bool, usize, bool) {
+fn parse_args() -> (bool, String, usize, bool) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
-    let grid = args.contains(&"--grid".to_string());
+    
+    let mut env_type = "robot".to_string();
+    if args.contains(&"--grid".to_string()) {
+        env_type = "grid".to_string();
+    } else if args.contains(&"--rocketsim".to_string()) {
+        env_type = "rocketsim".to_string();
+    }
 
     let infinite_epochs = args.contains(&"--infinite-epochs".to_string());
 
@@ -43,18 +49,21 @@ fn parse_args() -> (bool, bool, usize, bool) {
         }
     }
 
-    (visualize, grid, algo, infinite_epochs)
+    (visualize, env_type, algo, infinite_epochs)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     // let device = Device::Cpu;
     let device = Device::new_cuda(0)?;
 
-    let (visualize, use_grid, algo_choice, infinite_epochs) = parse_args();
+    let (visualize, env_type, algo_choice, infinite_epochs) = parse_args();
 
-    let mut env: Box<dyn Environment> = if use_grid {
+    let mut env: Box<dyn Environment> = if env_type == "grid" {
         println!("Using Grid Environment.");
         Box::new(environment::grid::GridEnvironment::new())
+    } else if env_type == "rocketsim" {
+        println!("Using RocketSim Environment.");
+        Box::new(environment::rocketsim::RocketSimEnvironment::new(5)) // tickskip=5
     } else {
         match environment::robot::RobotEnvironment::new() {
             Ok(robot_env) => {
@@ -274,11 +283,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some((_, ref vis_state_arc)) = vis_handle {
         loop {
-            let is_paused = vis_state_arc
+            let should_close = vis_state_arc
                 .try_lock()
-                .map(|state| state.is_paused)
+                .map(|state| state.should_close)
                 .unwrap_or(false);
-            if is_paused {
+            if should_close {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));

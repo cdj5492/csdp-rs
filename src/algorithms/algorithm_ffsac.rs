@@ -67,6 +67,11 @@ impl Algorithm for AlgorithmFFSAC {
         let tau = 0.1f32; 
 
         for episode in 1..=self.n_episodes {
+            if let Some(ref vis_state_arc) = vis_state {
+                if vis_state_arc.try_lock().map(|s| s.should_close).unwrap_or(false) {
+                    break;
+                }
+            }
             println!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
@@ -267,6 +272,16 @@ impl Algorithm for AlgorithmFFSAC {
         }
 
         println!("Training completed.");
+        if let Some(ref vis_state_arc) = vis_state {
+            if let Ok(state) = vis_state_arc.try_lock() {
+                let checkpoints_dir = std::path::Path::new("checkpoints");
+                if !checkpoints_dir.exists() {
+                    let _ = std::fs::create_dir_all(checkpoints_dir);
+                }
+                let csv_path = checkpoints_dir.join("epoch_rewards.csv");
+                let _ = state.save_graphs_to_csv(&csv_path);
+            }
+        }
         Ok(())
     }
 }

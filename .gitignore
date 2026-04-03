@@ -1,7 +1,9 @@
 /target
 /checkpoints
+/collision_meshes
 *.csv
 *.txt
 flamegraph.svg
 perf.data
 perf.data.old
+rlviser

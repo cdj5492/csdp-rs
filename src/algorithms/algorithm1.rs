@@ -131,15 +131,23 @@ impl Algorithm for Algorithm1 {
 
                 // Visualization check during inference
                 if let Some(ref vis_state_arc) = vis_state {
+                    let mut should_break = false;
                     loop {
-                        let is_paused = vis_state_arc
+                        let (is_paused, should_close) = vis_state_arc
                             .try_lock()
-                            .map(|state| state.is_paused)
-                            .unwrap_or(false);
+                            .map(|state| (state.is_paused, state.should_close))
+                            .unwrap_or((false, false));
+                        if should_close {
+                            should_break = true;
+                            break;
+                        }
                         if !is_paused {
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    if should_break {
+                        break;
                     }
                 }
             } // end of inference steps
@@ -305,6 +313,13 @@ impl Algorithm for Algorithm1 {
         match self.model.save(&final_path) {
             Ok(_) => println!("Successfully saved final model to {:?}", final_path),
             Err(e) => println!("Failed to save final model: {}", e),
+        }
+
+        if let Some(ref vis_state_arc) = vis_state {
+            if let Ok(state) = vis_state_arc.try_lock() {
+                let csv_path = checkpoints_dir.join("epoch_rewards.csv");
+                let _ = state.save_graphs_to_csv(&csv_path);
+            }
         }
 
         Ok(())

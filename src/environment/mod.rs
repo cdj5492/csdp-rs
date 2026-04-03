@@ -1,5 +1,6 @@
 pub mod grid;
 pub mod robot;
+pub mod rocketsim;
 
 use std::error::Error;
 

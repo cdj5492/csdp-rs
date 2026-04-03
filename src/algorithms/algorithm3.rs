@@ -189,6 +189,11 @@ impl Algorithm for Algorithm3 {
         let state_size = env.state_size();
 
         for episode in 1..=self.n_episodes {
+            if let Some(ref vis_state_arc) = vis_state {
+                if vis_state_arc.try_lock().map(|s| s.should_close).unwrap_or(false) {
+                    break;
+                }
+            }
             println!("starting episode {}", episode);
             env.reset()?;
 
@@ -390,6 +395,13 @@ impl Algorithm for Algorithm3 {
         let final_crit_path = checkpoints_dir.join("critic_final.safetensors");
         let _ = self.model.actor.save(&final_acc_path);
         let _ = self.model.critic.save(&final_crit_path);
+
+        if let Some(ref vis_state_arc) = vis_state {
+            if let Ok(state) = vis_state_arc.try_lock() {
+                let csv_path = checkpoints_dir.join("epoch_rewards.csv");
+                let _ = state.save_graphs_to_csv(&csv_path);
+            }
+        }
 
         Ok(())
     }

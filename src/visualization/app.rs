@@ -61,6 +61,13 @@ impl NeuralNetworkVisualizerApp {
             if ui.button("💾 Save Latest").clicked() {
                 if let Ok(mut state) = self.vis_state.try_lock() {
                     state.save_requested = true;
+                    // Export graphs
+                    let path = std::path::Path::new("checkpoints/epoch_rewards.csv");
+                    if let Err(e) = state.save_graphs_to_csv(path) {
+                        println!("Failed to save graph CSV: {}", e);
+                    } else {
+                        println!("Successfully saved graph CSV to {:?}", path);
+                    }
                 }
             }
             if ui.button("📂 Load Local").clicked() {

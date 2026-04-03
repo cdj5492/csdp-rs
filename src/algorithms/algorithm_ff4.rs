@@ -77,8 +77,8 @@ impl Algorithm for AlgorithmFF4 {
             let inference_start = Instant::now();
             let mut rng = rand::thread_rng();
 
-            let tau = f32::max(0.05, 0.25 - (episode as f32 / self.n_episodes as f32) * 0.2);
-            // let tau = 0.1;
+            // let tau = f32::max(0.05, 0.25 - (episode as f32 / self.n_episodes as f32) * 0.2);
+            let tau = 0.07;
 
             for _step in 0..self.n_steps_per_episode {
                 let mut current_states = Vec::new();
@@ -158,15 +158,23 @@ impl Algorithm for AlgorithmFF4 {
                 }
 
                 if let Some(ref vis_state_arc) = vis_state {
+                    let mut should_break = false;
                     loop {
-                        let is_paused = vis_state_arc
+                        let (is_paused, should_close) = vis_state_arc
                             .try_lock()
-                            .map(|state| state.is_paused)
-                            .unwrap_or(false);
+                            .map(|state| (state.is_paused, state.should_close))
+                            .unwrap_or((false, false));
+                        if should_close {
+                            should_break = true;
+                            break;
+                        }
                         if !is_paused {
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    if should_break {
+                        break;
                     }
                 }
             }
@@ -270,6 +278,16 @@ impl Algorithm for AlgorithmFF4 {
         }
 
         println!("Training completed.");
+        if let Some(ref vis_state_arc) = vis_state {
+            if let Ok(state) = vis_state_arc.try_lock() {
+                let checkpoints_dir = std::path::Path::new("checkpoints");
+                if !checkpoints_dir.exists() {
+                    let _ = std::fs::create_dir_all(checkpoints_dir);
+                }
+                let csv_path = checkpoints_dir.join("epoch_rewards.csv");
+                let _ = state.save_graphs_to_csv(&csv_path);
+            }
+        }
         Ok(())
     }
 }

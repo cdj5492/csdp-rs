@@ -129,15 +129,23 @@ impl Algorithm for AlgorithmFF2 {
                 }
 
                 if let Some(ref vis_state_arc) = vis_state {
+                    let mut should_break = false;
                     loop {
-                        let is_paused = vis_state_arc
+                        let (is_paused, should_close) = vis_state_arc
                             .try_lock()
-                            .map(|state| state.is_paused)
-                            .unwrap_or(false);
+                            .map(|state| (state.is_paused, state.should_close))
+                            .unwrap_or((false, false));
+                        if should_close {
+                            should_break = true;
+                            break;
+                        }
                         if !is_paused {
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                    if should_break {
+                        break;
                     }
                 }
             }
