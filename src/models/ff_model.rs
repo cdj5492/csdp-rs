@@ -17,7 +17,7 @@ impl FFLayer {
         let linear = linear(in_features, out_features, vb.pp("linear"))?;
 
         let params = ParamsAdamW {
-            lr: 0.001,
+            lr: 0.004,
             ..Default::default()
         };
         let opt = AdamW::new(varmap.all_vars(), params)?;
@@ -49,7 +49,8 @@ impl FFLayer {
             let neg_term = g_neg.affine(1.0, -self.threshold)?;
             
             let concat = Tensor::cat(&[&pos_term, &neg_term], 0)?;
-            let loss = (concat.exp()? + 1.0)?.log()?.mean_all()?;
+            let concat_safe = concat.clamp(-50.0f32, 50.0f32)?; // prevent loss explosion
+            let loss = (concat_safe.exp()? + 1.0)?.log()?.mean_all()?;
             
             self.opt.backward_step(&loss)?;
 

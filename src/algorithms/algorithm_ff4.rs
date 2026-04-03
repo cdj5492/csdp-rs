@@ -57,7 +57,7 @@ impl Algorithm for AlgorithmFF4 {
         let action_size = env.action_size();
         let state_size = env.state_size();
 
-        let n_envs = 50;
+        let n_envs = 16;
         let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
         for _ in 1..n_envs {
             envs.push(env.clone_box());
@@ -76,7 +76,7 @@ impl Algorithm for AlgorithmFF4 {
             let inference_start = Instant::now();
             let mut rng = rand::thread_rng();
 
-            let tau = f32::max(0.05, 1.0 - (episode as f32 / self.n_episodes as f32) * 0.95);
+            let tau = f32::max(0.05, 0.25 - (episode as f32 / self.n_episodes as f32) * 0.2);
             // let tau = 0.1;
 
             for _step in 0..self.n_steps_per_episode {
