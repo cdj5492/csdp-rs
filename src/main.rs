@@ -21,13 +21,13 @@ use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm_ff3::AlgorithmFF3;
 use algorithms::algorithm_ff4::AlgorithmFF4;
 use algorithms::algorithm_ffsac::AlgorithmFFSAC;
-use algorithms::algorithm1::Algorithm1;
-use algorithms::algorithm2::Algorithm2;
-use algorithms::algorithm3::Algorithm3;
+use algorithms::algorithm_csdp1::Algorithm1;
+use algorithms::algorithm_csdp2::Algorithm2;
+use algorithms::algorithm_csdp3::Algorithm3;
 use environment::Environment;
 use visualization::VisualizationState;
 
-fn parse_args() -> (bool, String, usize, bool) {
+fn parse_args() -> (bool, String, String, bool) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
     
@@ -40,12 +40,10 @@ fn parse_args() -> (bool, String, usize, bool) {
 
     let infinite_epochs = args.contains(&"--infinite-epochs".to_string());
 
-    let mut algo = 2;
+    let mut algo = "csdp2".to_string();
     if let Some(idx) = args.iter().position(|r| r == "--algo") {
         if idx + 1 < args.len() {
-            if let Ok(val) = args[idx + 1].parse::<usize>() {
-                algo = val;
-            }
+            algo = args[idx + 1].clone();
         }
     }
 
@@ -100,7 +98,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo_ff4_opt = None;
     let mut algo_ffsac_opt = None;
 
-    let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == 1 {
+    let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == "csdp1" {
+        println!("Using Algorithm CSDP1");
         let mut algo = Algorithm1::new(
             state_size,
             action_size,
@@ -119,7 +118,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = algo.model.synapses.len();
         algo1_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else if algo_choice == 2 {
+    } else if algo_choice == "csdp2" {
+        println!("Using Algorithm CSDP2");
         let mut algo = Algorithm2::new(
             state_size,
             action_size,
@@ -138,8 +138,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = algo.model.synapses.len();
         algo2_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else if algo_choice == 3 {
-        println!("Using Algorithm 3 (AC-CSDP)");
+    } else if algo_choice == "csdp3" {
+        println!("Using Algorithm CSDP3 (AC-CSDP)");
         let mut algo = Algorithm3::new(
             state_size,
             action_size,
@@ -158,8 +158,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = algo.model.actor.synapses.len() + algo.model.critic.synapses.len();
         algo3_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else if algo_choice == 4 {
-        println!("Using Algorithm 4 (FF Model - State/Action Iterator)");
+    } else if algo_choice == "ff1" {
+        println!("Using Algorithm FF1 (FF Model - State/Action Iterator)");
         let mut algo = AlgorithmFF1::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF1");
         if infinite_epochs {
@@ -173,8 +173,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ff1_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else if algo_choice == 5 {
-        println!("Using Algorithm 5 (FF Model - Transition Evaluator)");
+    } else if algo_choice == "ff2" {
+        println!("Using Algorithm FF2 (FF Model - Transition Evaluator)");
         let mut algo = AlgorithmFF2::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF2");
         if infinite_epochs {
@@ -188,8 +188,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ff2_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else if algo_choice == 6 {
-        println!("Using Algorithm 6 (FF Model - Probabilistic Rank Trajectory)");
+    } else if algo_choice == "ff3" {
+        println!("Using Algorithm FF3 (FF Model - Probabilistic Rank Trajectory)");
         let mut algo = AlgorithmFF3::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF3");
         if infinite_epochs {
@@ -203,8 +203,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ff3_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else if algo_choice == 7 {
-        println!("Using Algorithm 7 (FF Model - Temporal Contrastive RL)");
+    } else if algo_choice == "ff4" {
+        println!("Using Algorithm FF4 (FF Model - Temporal Contrastive RL)");
         let mut algo = AlgorithmFF4::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF4");
         if infinite_epochs {
@@ -218,8 +218,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ff4_opt = Some(algo);
         (eps, snap, layers, syns)
-    } else {
-        println!("Using Algorithm 8 (FF Model - Soft Actor-Critic)");
+    } else if algo_choice == "ffsac" {
+        println!("Using Algorithm FFSAC (FF Model - Soft Actor-Critic)");
         let mut algo = AlgorithmFFSAC::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFFSAC");
         if infinite_epochs {
@@ -233,6 +233,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ffsac_opt = Some(algo);
         (eps, snap, layers, syns)
+    } else {
+        panic!("Unknown algorithm choice: {}", algo_choice);
     };
 
     println!("layers len: {}, num_synapses: {}", num_layers, num_synapses);

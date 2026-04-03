@@ -1,6 +1,6 @@
-pub mod algorithm1;
-pub mod algorithm2;
-pub mod algorithm3;
+pub mod algorithm_csdp1;
+pub mod algorithm_csdp2;
+pub mod algorithm_csdp3;
 pub mod algorithm_ff1;
 pub mod algorithm_ff2;
 pub mod algorithm_ff3;
