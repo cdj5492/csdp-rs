@@ -345,21 +345,22 @@ impl RLModel1 {
         Ok(())
     }
 
-    pub fn reset(&mut self) -> CandleResult<()> {
+    pub fn reset(&mut self, batch_size: usize) -> CandleResult<()> {
         for layer in self.layers.iter_mut() {
-            layer.reset()?;
+            layer.reset(batch_size)?;
         }
         Ok(())
     }
 
-    /// run for T timesteps, and return collected outputs
+    /// run for T timesteps, and return collected outputs (batched)
     pub fn process(
         &mut self,
         input: &Tensor,
         action: &Tensor,
         timesteps: usize,
-    ) -> CandleResult<f32> {
-        self.reset()?;
+    ) -> CandleResult<Tensor> {
+        let batch_size = input.dims().get(1).copied().unwrap_or(1);
+        self.reset(batch_size)?;
         for _ in 0..timesteps {
             self.step(input, action)?;
         }
@@ -460,13 +461,14 @@ impl RLModel1 {
     }
 
     /// gets the total sum of output activities of all layers excluding input layers
-    pub fn get_model_activity(&self) -> CandleResult<f32> {
-        let mut total_activity = 0.0;
+    pub fn get_model_activity(&self) -> CandleResult<Tensor> {
+        let batch_size = self.layers[0].output()?.dims().get(1).copied().unwrap_or(1);
+        let mut total_activity = Tensor::zeros((1, batch_size), candle_core::DType::F32, &self.device)?;
 
         for layer in &self.layers {
             let output = layer.output()?;
-            let output_vec = output.flatten_all()?.to_vec1::<f32>()?;
-            total_activity += output_vec.iter().sum::<f32>();
+            let sum_layer = output.sum_keepdim(0)?;
+            total_activity = total_activity.add(&sum_layer)?;
         }
 
         Ok(total_activity)

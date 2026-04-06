@@ -8,13 +8,13 @@ pub trait ModSignalGenerator: Send + Sync {
     /// Calculate and update the internally stored modulatory signal.
     /// `spikes` is the current spiking activity.
     /// `label` is the target value.
-    /// `reward` is the current environment training scalar.
+    /// `reward` is the batched environment training scalar.
     /// `dt` is the timestep.
     fn calc_mod_signal(
         &mut self,
         spikes: &Tensor,
         label: &Tensor,
-        reward: f32,
+        reward: &Tensor,
         dt: f32,
     ) -> CandleResult<()>;
 

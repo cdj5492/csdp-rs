@@ -14,7 +14,7 @@ pub struct OneHotLayer {
     bounds: Vec<usize>,
     /// start index for each variable in the output vector
     offsets: Vec<usize>,
-    current_label: f32,
+    current_label: Tensor,
     dummy_mod_signal: Tensor,
 }
 
@@ -40,7 +40,7 @@ impl OneHotLayer {
             size: total_size,
             bounds,
             offsets,
-            current_label: 1.0,
+            current_label: Tensor::ones((1, 1), DType::F32, device)?,
             dummy_mod_signal,
         })
     }
@@ -73,15 +73,27 @@ impl Layer for OneHotLayer {
     fn add_input(&mut self, input: &Tensor) -> CandleResult<()> {
         // If input size matches number of variables, perform expansion
         if input.dims().len() >= 1 && input.dims()[0] == self.bounds.len() {
-            let data = input.flatten_all()?.to_vec1::<f32>()?;
-            let mut expanded = vec![0.0f32; self.size];
-            for (i, &val) in data.iter().enumerate() {
-                let idx = val.round() as usize;
-                if idx < self.bounds[i] {
-                    expanded[self.offsets[i] + idx] = 1.0;
+            let batch_size = input.dims().get(1).copied().unwrap_or(1);
+            
+            // Reformat into 2D if it's not (e.g. 1D tensor)
+            let input_2d = if input.dims().len() == 1 {
+                input.reshape((input.dims()[0], 1))?
+            } else {
+                input.clone()
+            };
+            
+            let data = input_2d.to_vec2::<f32>()?;
+            let mut expanded = vec![0.0f32; self.size * batch_size];
+            for v in 0..self.bounds.len() {
+                for b in 0..batch_size {
+                    let val = data[v][b];
+                    let idx = val.round() as usize;
+                    if idx < self.bounds[v] {
+                        expanded[(self.offsets[v] + idx) * batch_size + b] = 1.0;
+                    }
                 }
             }
-            let expanded_tensor = Tensor::from_vec(expanded, (self.size, 1), input.device())?;
+            let expanded_tensor = Tensor::from_vec(expanded, (self.size, batch_size), input.device())?;
             self.inputs = self.inputs.add(&expanded_tensor)?;
         } else {
             // standard addition if already expanded or from synapses
@@ -91,22 +103,24 @@ impl Layer for OneHotLayer {
     }
 
     fn reset_input(&mut self) -> CandleResult<()> {
-        self.inputs = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
+        let batch_size = self.probs.dims()[1];
+        self.inputs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         Ok(())
     }
 
-    fn reset(&mut self) -> CandleResult<()> {
-        self.inputs = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
-        self.probs = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
-        self.spikes = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
+    fn reset(&mut self, batch_size: usize) -> CandleResult<()> {
+        self.inputs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.probs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.spikes = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.dummy_mod_signal = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         Ok(())
     }
 
-    fn set_positive_sample(&mut self, label: f32) {
-        self.current_label = label;
+    fn set_positive_sample(&mut self, label: &Tensor) {
+        self.current_label = label.clone();
     }
 
-    fn set_reward(&mut self, _reward: f32) {}
+    fn set_reward(&mut self, _reward: &Tensor) {}
 }
 
 #[cfg(test)]

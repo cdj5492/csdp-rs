@@ -48,10 +48,11 @@ fn test_investigate_csdp_explosion() {
             // Suppose post_layer spikes slightly, pre_layer spikes slightly
             // This is a dummy mod_signal simulation.
             // The exact bug is mathematically reproducing the tensor operations
-            // inside CSDP update_weights.
+            let label_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
+            let reward_tensor = Tensor::from_vec(vec![0.001f32], (1, 1), &device).unwrap();
 
-            post_layer.set_positive_sample(1.0);
-            post_layer.set_reward(0.001);
+            post_layer.set_positive_sample(&label_tensor);
+            post_layer.set_reward(&reward_tensor);
             let mut inputs = Tensor::zeros((post_size, 1), DType::F32, &device).unwrap();
 
             // To simulate the network, we give it inputs that might drive spikes occasionally
@@ -60,6 +61,7 @@ fn test_investigate_csdp_explosion() {
             }
 
             post_layer.add_input(&inputs).unwrap();
+            post_layer.reset(1).unwrap();
             post_layer.step(dt).unwrap();
 
             csdp.update_weights(&pre_activity, &mut post_layer, dt)

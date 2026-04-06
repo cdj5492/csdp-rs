@@ -89,9 +89,10 @@ impl Algorithm for Algorithm1 {
                 for a in 0..action_size {
                     total_inference_actions += 1;
                     let action_tensor = self.get_action_tensor(a)?;
-                    let activity =
+                    let activity_tensor =
                         self.model
                             .process(&state_tensor, &action_tensor, self.n_timesteps)?;
+                    let activity = activity_tensor.to_vec2::<f32>()?[0][0];
                     let reward = env.evaluate_action(&current_state, a);
 
                     step_actions.push((a, action_tensor, reward));
@@ -235,8 +236,9 @@ impl Algorithm for Algorithm1 {
                 for (state_t, action_t, ytype) in &episode_data {
                     total_iteration += 1;
 
+                    let ytype_tensor = Tensor::from_vec(vec![*ytype], (1, 1), &self.device)?;
                     for layer in self.model.layers.iter_mut() {
-                        layer.set_positive_sample(*ytype);
+                        layer.set_positive_sample(&ytype_tensor);
                     }
 
                     // For spike plot history
@@ -245,7 +247,7 @@ impl Algorithm for Algorithm1 {
                         .as_ref()
                         .and_then(|vs| vs.try_lock().ok().and_then(|s| s.selected_layer_id));
 
-                    self.model.reset()?;
+                    self.model.reset(1)?;
                     for _ in 0..self.n_timesteps {
                         self.model.step(state_t, action_t)?;
                         if let Some(layer_id) = record_layer {

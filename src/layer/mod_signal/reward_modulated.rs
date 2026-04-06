@@ -40,19 +40,20 @@ impl RewardModulatedModSignal {
 }
 
 /// p[y_type=1; z(t)]
-fn calc_goodness(z: &Tensor, thr: f32, maximize: bool) -> CandleResult<f32> {
-    let thr = thr as f64;
+fn calc_goodness(z: &Tensor, thr: f32, maximize: bool) -> CandleResult<(Tensor, Tensor)> {
+    let thr_sqr = (thr * thr) as f64;
     let z_sqr = z.mul(z)?;
-    let delta = z_sqr.sum_all()?;
+    let delta = z_sqr.sum_keepdim(0)?; // shape (1, batch_size)
     let delta = if maximize {
-        ((-thr * thr) + delta)?
+        delta.affine(1.0, -thr_sqr)?
     } else {
-        ((thr * thr) - delta)?
+        delta.affine(-1.0, thr_sqr)?
     };
 
     let p = sigmoid(&delta)?;
-    let eps = 1e-5;
-    p.clamp(eps, 1.0 - eps)?.to_scalar::<f32>()
+    let eps = 1e-5f64;
+    let p_clamped = p.clamp(eps, 1.0 - eps)?;
+    Ok((p_clamped, delta))
 }
 
 /// C[z(t), y_type] modulated by external reward R(x, a)
@@ -60,25 +61,22 @@ fn calc_loss_reward_modulated(
     z: &Tensor,
     lab: &Tensor,
     thr: f32,
-    reward: f32,
+    reward: &Tensor,
 ) -> CandleResult<Tensor> {
-    let logit = calc_goodness(z, thr, true)?;
-    // p = sigmoid(logit)
-    // log(p) = -log(1 + exp(-logit))
-    // log(1-p) = -logit - log(1 + exp(-logit))
+    let (_, logit) = calc_goodness(z, thr, true)?;
 
-    let log_p = -((1.0 + (-logit.abs()).exp()).log10() + logit.max(0.0)) as f64;
-    let log_1_minus_p = -logit as f64 + log_p;
+    let abs_logit_neg = logit.abs()?.affine(-1.0, 0.0)?;
+    let term = abs_logit_neg.exp()?.affine(1.0, 1.0)?.log()?;
+    
+    let log_p = term.add(&logit.maximum(&logit.zeros_like()?)?)?.affine(-1.0, 0.0)?;
+    let log_1_minus_p = log_p.sub(&logit)?;
 
-    // Loss = - [ Y * log(P) * R + (1 - Y) * log(1 - P) ]
-    // Tensor operations:
-    // Term 1: lab * log_p * reward
-    let term1 = lab.affine(log_p * reward as f64, 0.0)?;
+    // Loss = - [ Y * log_p * R + (1 - Y) * log_1_minus_p ]
+    let term1 = lab.mul(&log_p)?.mul(reward)?;
 
-    // Term 2: (1 - lab) * log_1_minus_p
     let ones = lab.ones_like()?;
     let one_minus_lab = ones.sub(lab)?;
-    let term2 = one_minus_lab.affine(log_1_minus_p, 0.0)?;
+    let term2 = one_minus_lab.mul(&log_1_minus_p)?;
 
     let loss = (term1.add(&term2)?).affine(-1.0, 0.0)?;
     Ok(loss)
@@ -89,7 +87,7 @@ impl ModSignalGenerator for RewardModulatedModSignal {
         &mut self,
         spikes: &Tensor,
         lab: &Tensor,
-        reward: f32,
+        reward: &Tensor,
         dt: f32,
     ) -> CandleResult<()> {
         let dz =
@@ -100,7 +98,8 @@ impl ModSignalGenerator for RewardModulatedModSignal {
         self.prev_loss = l;
         let dz_ep = (&dz + 0.00001)?;
 
-        self.mod_signal = dl.div(&dz_ep)?;
+        let dl_expanded = dl.broadcast_as(dz_ep.shape())?;
+        self.mod_signal = dl_expanded.div(&dz_ep)?;
         Ok(())
     }
 

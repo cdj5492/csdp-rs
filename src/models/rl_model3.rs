@@ -49,11 +49,11 @@ impl RLModel3 {
         self.critic.is_learning = false;
     }
 
-    pub fn reset_actor(&mut self) -> CandleResult<()> {
-        self.actor.reset()
+    pub fn reset_actor(&mut self, batch_size: usize) -> CandleResult<()> {
+        self.actor.reset(batch_size)
     }
 
-    pub fn reset_critic(&mut self) -> CandleResult<()> {
-        self.critic.reset()
+    pub fn reset_critic(&mut self, batch_size: usize) -> CandleResult<()> {
+        self.critic.reset(batch_size)
     }
 }

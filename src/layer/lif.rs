@@ -18,8 +18,8 @@ pub struct LIFLayer {
     /// membrane time constant
     tau: f32,
     size: usize,
-    current_label: f32,
-    current_reward: f32,
+    current_label: Tensor,
+    current_reward: Tensor,
 }
 
 impl LIFLayer {
@@ -43,8 +43,8 @@ impl LIFLayer {
             thresh,
             thresh_lambda,
             size,
-            current_label: 1.0,
-            current_reward: 0.0,
+            current_label: Tensor::ones((1, 1), DType::F32, device)?,
+            current_reward: Tensor::zeros((1, 1), DType::F32, device)?,
         })
     }
 }
@@ -58,6 +58,7 @@ impl Layer for LIFLayer {
         self.state = self.state.sub(&((self.thresh as f64) * &self.spikes)?)?;
 
         // adjust threshold adaptively
+        let batch_size = self.spikes.dims()[1];
         self.thresh += dt
             * self.thresh_lambda
             * (self
@@ -65,16 +66,17 @@ impl Layer for LIFLayer {
                 .sum_all()?
                 .to_device(&Device::Cpu)?
                 .to_scalar::<f32>()?
+                / batch_size as f32
                 - (self.size as f32 * 0.02)); // Target 2% firing rate
 
         if self.thresh < 0.0 {
             self.thresh = 0.0;
         }
 
-
-        let lab = (self.spikes.ones_like()? * self.current_label as f64)?;
+        let lab_ones = self.spikes.ones_like()?;
+        let lab = lab_ones.broadcast_mul(&self.current_label)?;
         self.mod_signal
-            .calc_mod_signal(&self.spikes, &lab, self.current_reward, dt)?;
+            .calc_mod_signal(&self.spikes, &lab, &self.current_reward, dt)?;
 
         Ok(())
     }
@@ -103,22 +105,23 @@ impl Layer for LIFLayer {
 
     /// resets input compartment to zero
     fn reset_input(&mut self) -> CandleResult<()> {
-        self.inputs = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
+        let batch_size = self.state.dims()[1];
+        self.inputs = Tensor::zeros((self.size, batch_size), DType::F32, self.state.device())?;
         Ok(())
     }
 
     /// resets internal state fully
-    fn reset(&mut self) -> CandleResult<()> {
-        self.state = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
-        self.spikes = Tensor::zeros((self.size, 1), DType::F32, self.state.device())?;
+    fn reset(&mut self, batch_size: usize) -> CandleResult<()> {
+        self.state = Tensor::zeros((self.size, batch_size), DType::F32, self.state.device())?;
+        self.spikes = Tensor::zeros((self.size, batch_size), DType::F32, self.state.device())?;
         Ok(())
     }
 
-    fn set_positive_sample(&mut self, label: f32) {
-        self.current_label = label;
+    fn set_positive_sample(&mut self, label: &Tensor) {
+        self.current_label = label.clone();
     }
 
-    fn set_reward(&mut self, reward: f32) {
-        self.current_reward = reward;
+    fn set_reward(&mut self, reward: &Tensor) {
+        self.current_reward = reward.clone();
     }
 }

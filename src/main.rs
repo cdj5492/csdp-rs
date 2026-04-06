@@ -24,6 +24,10 @@ use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm_ff3::AlgorithmFF3;
 use algorithms::algorithm_ff4::AlgorithmFF4;
 use algorithms::algorithm_ffsac::AlgorithmFFSAC;
+use algorithms::algorithm_csdp1::Algorithm1;
+use algorithms::algorithm_csdp2::Algorithm2;
+use algorithms::algorithm_csdp3::Algorithm3;
+use algorithms::algorithm_csdp4::Algorithm4;
 use environment::Environment;
 use visualization::VisualizationState;
 
@@ -92,6 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo1_opt = None;
     let mut algo2_opt = None;
     let mut algo3_opt = None;
+    let mut algo4_opt = None;
     let mut algo_ff1_opt = None;
     let mut algo_ff2_opt = None;
     let mut algo_ff3_opt = None;
@@ -157,6 +162,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         let layers = algo.model.actor.layers.len() + algo.model.critic.layers.len();
         let syns = algo.model.actor.synapses.len() + algo.model.critic.synapses.len();
         algo3_opt = Some(algo);
+        (eps, snap, layers, syns)
+    } else if algo_choice == "csdp4" {
+        println!("Using Algorithm CSDP4");
+        let mut algo = Algorithm4::new(
+            state_size,
+            action_size,
+            vec![256, 128],
+            dt,
+            device.clone(),
+            state_bounds.clone(),
+        )
+        .expect("Failed to create Algorithm4");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = algo.model.get_visualization_snapshot();
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = algo.model.synapses.len();
+        algo4_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff1" {
         println!("Using Algorithm FF1 (FF Model - State/Action Iterator)");
@@ -270,6 +295,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if let Some(mut algo) = algo2_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo3_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo4_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ff1_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;

@@ -29,13 +29,13 @@ pub trait Layer: Send + Sync {
     fn reset_input(&mut self) -> CandleResult<()>;
 
     /// resets internal state fully
-    fn reset(&mut self) -> CandleResult<()>;
+    fn reset(&mut self, batch_size: usize) -> CandleResult<()>;
 
     /// sets the current sample type for the layer
-    fn set_positive_sample(&mut self, label: f32);
+    fn set_positive_sample(&mut self, label: &Tensor);
 
     /// sets the environmental reward for the layer
-    fn set_reward(&mut self, reward: f32);
+    fn set_reward(&mut self, reward: &Tensor);
 }
 
 /// Position of a layer in visualization space

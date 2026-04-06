@@ -39,7 +39,8 @@ fn test_investigate_runaway_firing() {
             Tensor::from_vec(input_vec, (state_size + action_size, 1), &device).unwrap();
 
         // 1. Evaluate Critic
-        model.critic.reset().unwrap();
+        model.actor.reset(1).unwrap();
+        model.critic.reset(1).unwrap();
         model.critic.is_learning = false;
 
         let mut crit_spikes = 0.0;
@@ -57,11 +58,18 @@ fn test_investigate_runaway_firing() {
 
         // 2. Train Critic
         model.critic.is_learning = true;
-        for layer in model.critic.layers.iter_mut() {
-            layer.set_positive_sample(10.0); // Dummy Q target
-            layer.set_reward(1.0); // Dummy reward
+        let label_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
+        let reward_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
+        
+        for layer in model.actor.layers.iter_mut() {
+            layer.set_positive_sample(&label_tensor);
         }
-        model.critic.reset().unwrap();
+        for layer in model.critic.layers.iter_mut() {
+            layer.set_positive_sample(&label_tensor);
+        }
+
+        model.actor.reset(1).unwrap();
+        model.critic.reset(1).unwrap();
         for _ in 0..n_timesteps {
             model.critic.step(&input_tensor, None).unwrap();
         }

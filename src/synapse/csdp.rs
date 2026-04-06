@@ -31,7 +31,7 @@ impl CSDP {
 impl SynapseOps for CSDP {
     fn forward(&self, pre: &Tensor) -> CandleResult<Tensor> {
         let w_pre = self.weights.matmul(pre)?;
-        let out = w_pre.add(&self.biases)?;
+        let out = w_pre.broadcast_add(&self.biases)?;
         Ok(out)
     }
 
@@ -42,7 +42,7 @@ impl SynapseOps for CSDP {
         _dt: f32,
     ) -> CandleResult<()> {
         let pre = pre_activity;
-        let pre_row = pre.reshape((1, pre.dims()[0]))?;
+        let batch_size = pre.dims().get(1).copied().unwrap_or(1);
 
         let mod_signal = post_layer.get_mod_signal();
 
@@ -51,15 +51,16 @@ impl SynapseOps for CSDP {
         let lambda_d = 0.00005;
 
         // outer product (should be same shape as weight matrix)
-        // let delta = (mod_signal.matmul(&pre_row)?
-        //     + lambda_d * post_layer.output()?.matmul(&(1.0 - pre_row)?)?)?;
-        let delta = (mod_signal.matmul(&pre_row)? - (lambda_d * self.weights.clone())?)?;
+        let dw = mod_signal.matmul(&pre.t()?)?;
+        let dw_avg = dw.affine(1.0 / (batch_size as f64), 0.0)?;
+        
+        let delta = dw_avg.sub(&(self.weights.affine(lambda_d as f64, 0.0)?))?;
 
         self.weights = self.weights.add(&delta)?;
 
         // biases are treated as connections to a neuron that is always firing every timestep
-        // TODO: figure out why this doesnt work
-        // self.biases = self.biases.add(mod_signal)?;
+        let db_avg = mod_signal.sum_keepdim(1)?.affine(1.0 / (batch_size as f64), 0.0)?;
+        self.biases = self.biases.add(&db_avg)?;
 
         Ok(())
     }

@@ -105,7 +105,8 @@ impl Algorithm for Algorithm2 {
                         (state_size * 2 + 1, 1),
                         &self.device,
                     )?;
-                    let activity = self.model.process(&input_tensor, self.n_timesteps)?;
+                    let activity_tensor = self.model.process(&input_tensor, self.n_timesteps)?;
+                    let activity = activity_tensor.to_vec2::<f32>()?[0][0];
                     println!("activity for {}: {}", a, activity);
 
                     if activity > best_activity {
@@ -306,10 +307,12 @@ impl Algorithm for Algorithm2 {
                     )?;
                     let context_tensor = Tensor::from_vec(vec![*label], (1, 1), &self.device)?;
 
+                    let label_tensor = Tensor::from_vec(vec![*label], (1, 1), &self.device)?;
+                    let reward_tensor = Tensor::from_vec(vec![*reward], (1, 1), &self.device)?;
                     for layer in self.model.layers.iter_mut() {
-                        layer.set_positive_sample(*label);
+                        layer.set_positive_sample(&label_tensor);
                     }
-                    self.model.set_reward(*reward);
+                    self.model.set_reward(&reward_tensor);
 
                     // For spike plot history
                     let mut spike_history = Vec::new();
@@ -317,7 +320,7 @@ impl Algorithm for Algorithm2 {
                         .as_ref()
                         .and_then(|vs| vs.try_lock().ok().and_then(|s| s.selected_layer_id));
 
-                    self.model.reset()?;
+                    self.model.reset(1)?;
                     for _ in 0..self.n_timesteps {
                         self.model.step(&input_tensor, Some(&context_tensor))?;
 

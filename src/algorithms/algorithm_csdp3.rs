@@ -61,12 +61,13 @@ impl Algorithm3 {
         record_layer: Option<usize>,
     ) -> Result<(Vec<f32>, Vec<Vec<f32>>), Box<dyn Error>> {
         if let Some(lbl) = label {
+            let label_tensor = Tensor::from_vec(vec![lbl], (1, 1), &self.device)?;
             for layer in self.model.actor.layers.iter_mut() {
-                layer.set_positive_sample(lbl);
+                layer.set_positive_sample(&label_tensor);
             }
         }
 
-        self.model.actor.reset()?;
+        self.model.actor.reset(1)?;
         let action_size = self.model.actor.layers.last().unwrap().size();
         let mut z_vec = vec![0.0; action_size];
         let mut spike_history = Vec::new();
@@ -143,8 +144,9 @@ impl Algorithm3 {
         label: Option<f32>,
     ) -> Result<f32, Box<dyn Error>> {
         if let Some(lbl) = label {
+            let label_tensor = Tensor::from_vec(vec![lbl], (1, 1), &self.device)?;
             for layer in self.model.critic.layers.iter_mut() {
-                layer.set_positive_sample(lbl);
+                layer.set_positive_sample(&label_tensor);
             }
         }
 
@@ -158,7 +160,7 @@ impl Algorithm3 {
             &self.device,
         )?;
 
-        self.model.critic.reset()?;
+        self.model.critic.reset(1)?;
         let mut q_value = 0.0;
 
         for _ in 0..self.n_timesteps {

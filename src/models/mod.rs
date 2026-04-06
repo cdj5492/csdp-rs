@@ -397,14 +397,14 @@ impl Model {
         Ok(())
     }
 
-    pub fn reset(&mut self) -> CandleResult<()> {
+    pub fn reset(&mut self, batch_size: usize) -> CandleResult<()> {
         for layer in self.layers.iter_mut() {
-            layer.reset()?;
+            layer.reset(batch_size)?;
         }
         Ok(())
     }
 
-    /// run for T timesteps, and return collected outputs
+    /// run for T timesteps, and return collected outputs (batched)
     pub fn process(
         &mut self,
         input: &Tensor,
@@ -412,11 +412,12 @@ impl Model {
         collect_data: bool,
         _device: &Device,
     ) -> CandleResult<ProcessOutput> {
+        let batch_size = input.dims().get(1).copied().unwrap_or(1);
         let mut out = ProcessOutput {
             output_activity: vec![],
-            final_output: Tensor::zeros((0, 0), DType::F32, &self.device)?,
+            final_output: Tensor::zeros((0, batch_size), DType::F32, &self.device)?,
         };
-        self.reset()?;
+        self.reset(batch_size)?;
         for _ in 0..timesteps {
             self.step(input, None)?; // no labels provided during inference
 

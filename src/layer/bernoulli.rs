@@ -10,7 +10,7 @@ pub struct BernoulliLayer {
     spikes: Tensor,
     inputs: Tensor,
     size: usize,
-    current_label: f32,
+    current_label: Tensor,
     dummy_mod_signal: Tensor,
 }
 
@@ -28,7 +28,7 @@ impl BernoulliLayer {
             spikes,
             inputs,
             size,
-            current_label: 1.0,
+            current_label: Tensor::ones((1, 1), DType::F32, device)?,
             dummy_mod_signal,
         })
     }
@@ -41,7 +41,8 @@ impl Layer for BernoulliLayer {
         self.probs = self.inputs.clamp(eps, 1.0 - eps)?;
 
         // reroll rng
-        self.rng_vals = Tensor::rand(0.0f32, 1.0, (self.size, 1), self.probs.device())?;
+        let batch_size = self.probs.dims()[1];
+        self.rng_vals = Tensor::rand(0.0f32, 1.0, (self.size, batch_size), self.probs.device())?;
 
         // 1 if prob > rng
         self.spikes = self
@@ -73,20 +74,23 @@ impl Layer for BernoulliLayer {
     }
 
     fn reset_input(&mut self) -> CandleResult<()> {
-        self.inputs = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
+        let batch_size = self.probs.dims()[1];
+        self.inputs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         Ok(())
     }
 
-    fn reset(&mut self) -> CandleResult<()> {
-        self.inputs = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
-        self.probs = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
-        self.spikes = Tensor::zeros((self.size, 1), DType::F32, self.probs.device())?;
+    fn reset(&mut self, batch_size: usize) -> CandleResult<()> {
+        self.inputs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.probs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.spikes = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.rng_vals = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.dummy_mod_signal = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         Ok(())
     }
 
-    fn set_positive_sample(&mut self, label: f32) {
-        self.current_label = label;
+    fn set_positive_sample(&mut self, label: &Tensor) {
+        self.current_label = label.clone();
     }
 
-    fn set_reward(&mut self, _reward: f32) {}
+    fn set_reward(&mut self, _reward: &Tensor) {}
 }

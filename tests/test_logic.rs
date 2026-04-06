@@ -30,7 +30,7 @@ fn test_ac_csdp_actor_logic_learning() {
             // Baseline pass
             model.actor.is_learning = false;
             let mut z_base_vec = vec![0.0f32; 2];
-            model.actor.reset().unwrap();
+            model.actor.reset(1).unwrap();
             for _ in 0..n_timesteps {
                 for layer in model.actor.layers.iter_mut() {
                     layer.reset_input().unwrap();
@@ -60,7 +60,7 @@ fn test_ac_csdp_actor_logic_learning() {
 
             // Perturbation pass
             let mut z_pert_vec = vec![0.0f32; 2];
-            model.actor.reset().unwrap();
+            model.actor.reset(1).unwrap();
             let mut noise_sequence = vec![];
             for _ in 0..n_timesteps {
                 noise_sequence.push(Tensor::randn(0.0f32, 15.0f32, (2, 1), &device).unwrap());
@@ -133,14 +133,16 @@ fn test_ac_csdp_actor_logic_learning() {
             for _pass in 0..2 {
                 let use_pert = (pert_better && _pass == 0) || (!pert_better && _pass == 1);
                 let label = if _pass == 0 { 1.0 } else { -1.0 };
+                let reward = 0.001;
+
+                let label_tensor = Tensor::from_vec(vec![label], (1, 1), &device).unwrap();
+                let reward_tensor = Tensor::from_vec(vec![reward], (1, 1), &device).unwrap();
 
                 for layer in model.actor.layers.iter_mut() {
-                    layer.set_positive_sample(label);
-                    // Use reward explicitly as the missing structural learning rate alpha = 0.001
-                    // Without this, outer products add >40.0 weights to synapses intrinsically in 1 epoch!
-                    layer.set_reward(0.001);
+                    layer.set_positive_sample(&label_tensor);
+                    layer.set_reward(&reward_tensor);
                 }
-                model.actor.reset().unwrap();
+                model.actor.reset(1).unwrap();
 
                 for t in 0..n_timesteps {
                     for layer in model.actor.layers.iter_mut() {
