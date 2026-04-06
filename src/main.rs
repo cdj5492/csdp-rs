@@ -16,21 +16,21 @@ use custom_framework::utils;
 use custom_framework::visualization;
 
 use algorithms::Algorithm;
+use algorithms::algorithm_csdp1::Algorithm1;
+use algorithms::algorithm_csdp2::Algorithm2;
+use algorithms::algorithm_csdp3::Algorithm3;
 use algorithms::algorithm_ff1::AlgorithmFF1;
 use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm_ff3::AlgorithmFF3;
 use algorithms::algorithm_ff4::AlgorithmFF4;
 use algorithms::algorithm_ffsac::AlgorithmFFSAC;
-use algorithms::algorithm_csdp1::Algorithm1;
-use algorithms::algorithm_csdp2::Algorithm2;
-use algorithms::algorithm_csdp3::Algorithm3;
 use environment::Environment;
 use visualization::VisualizationState;
 
 fn parse_args() -> (bool, String, String, bool) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
-    
+
     let mut env_type = "robot".to_string();
     if args.contains(&"--grid".to_string()) {
         env_type = "grid".to_string();
@@ -305,7 +305,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        
+
         let _ = handle.join();
     }
 
