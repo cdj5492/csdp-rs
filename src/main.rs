@@ -19,15 +19,12 @@ use algorithms::Algorithm;
 use algorithms::algorithm_csdp1::Algorithm1;
 use algorithms::algorithm_csdp2::Algorithm2;
 use algorithms::algorithm_csdp3::Algorithm3;
+use algorithms::algorithm_csdp4::Algorithm4;
 use algorithms::algorithm_ff1::AlgorithmFF1;
 use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm_ff3::AlgorithmFF3;
 use algorithms::algorithm_ff4::AlgorithmFF4;
 use algorithms::algorithm_ffsac::AlgorithmFFSAC;
-use algorithms::algorithm_csdp1::Algorithm1;
-use algorithms::algorithm_csdp2::Algorithm2;
-use algorithms::algorithm_csdp3::Algorithm3;
-use algorithms::algorithm_csdp4::Algorithm4;
 use environment::Environment;
 use visualization::VisualizationState;
 

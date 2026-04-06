@@ -33,7 +33,7 @@ impl RewardModulatedModSignal {
             max_z,
             omega,
             z: Tensor::zeros((size, 1), DType::F32, device)?,
-            prev_loss: Tensor::zeros((size, 1), DType::F32, device)?,
+            prev_loss: Tensor::zeros((1, 1), DType::F32, device)?,
             mod_signal: Tensor::zeros((size, 1), DType::F32, device)?,
         })
     }
@@ -94,7 +94,7 @@ impl ModSignalGenerator for RewardModulatedModSignal {
             (((dt / self.trace_tau) as f64) * (((self.max_z as f64) * spikes)?.sub(&self.z)?))?;
         self.z = self.z.add(&dz)?;
         let l = calc_loss_reward_modulated(&self.z, lab, self.omega, reward)?;
-        let dl = l.sub(&self.prev_loss)?;
+        let dl = l.broadcast_sub(&self.prev_loss)?;
         self.prev_loss = l;
         let dz_ep = (&dz + 0.00001)?;
 

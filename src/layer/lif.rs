@@ -73,10 +73,11 @@ impl Layer for LIFLayer {
             self.thresh = 0.0;
         }
 
-        let lab_ones = self.spikes.ones_like()?;
-        let lab = lab_ones.broadcast_mul(&self.current_label)?;
+        let batch_size = self.spikes.dims()[1];
+        let lab = self.current_label.broadcast_as((1, batch_size))?;
+        let reward_expanded = self.current_reward.broadcast_as((1, batch_size))?;
         self.mod_signal
-            .calc_mod_signal(&self.spikes, &lab, &self.current_reward, dt)?;
+            .calc_mod_signal(&self.spikes, &lab, &reward_expanded, dt)?;
 
         Ok(())
     }
