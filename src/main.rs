@@ -25,6 +25,7 @@ use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm_ff3::AlgorithmFF3;
 use algorithms::algorithm_ff4::AlgorithmFF4;
 use algorithms::algorithm_ffsac::AlgorithmFFSAC;
+use algorithms::algorithm_ff_multi1::AlgorithmFFMulti1;
 use environment::Environment;
 use visualization::VisualizationState;
 
@@ -99,6 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo_ff3_opt = None;
     let mut algo_ff4_opt = None;
     let mut algo_ffsac_opt = None;
+    let mut algo_ff_multi1_opt = None;
 
     let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == "csdp1" {
         println!("Using Algorithm CSDP1");
@@ -255,6 +257,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ffsac_opt = Some(algo);
         (eps, snap, layers, syns)
+    } else if algo_choice == "ff_multi1" {
+        println!("Using Algorithm FF Multi 1 (FF Multi Model - Temporal Contrastive RL)");
+        let mut algo = AlgorithmFFMulti1::new(state_size, action_size, vec![256, 128], device.clone())
+            .expect("Failed to create AlgorithmFFMulti1");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = Err(candle_core::Error::Msg(
+            "FF Model has no visualization".to_string(),
+        ));
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = 0;
+        algo_ff_multi1_opt = Some(algo);
+        (eps, snap, layers, syns)
     } else {
         panic!("Unknown algorithm choice: {}", algo_choice);
     };
@@ -304,6 +321,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if let Some(mut algo) = algo_ff4_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ffsac_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo_ff_multi1_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     }
 

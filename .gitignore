@@ -1,6 +1,7 @@
 /target
 /checkpoints
 /collision_meshes
+/data
 *.csv
 *.txt
 flamegraph.svg
