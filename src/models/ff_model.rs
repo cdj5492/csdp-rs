@@ -56,7 +56,7 @@ impl FFLayer {
 
             if epoch % 200 == 0 || epoch == self.num_epochs - 1 {
                 let current_loss = loss.to_vec0::<f32>()?;
-                println!("Layer {} - Epoch {} Loss: {:.4}", layer_idx, epoch, current_loss);
+                log::info!("Layer {} - Epoch {} Loss: {:.4}", layer_idx, epoch, current_loss);
             }
         }
         
@@ -110,7 +110,7 @@ impl FFModel {
         }
         
         let best_scores: Vec<f32> = total_goodnesses.to_vec1()?;
-        // println!("Predict scores: {:?}", best_scores); // Muted print for vectorization scale
+        // log::info!("Predict scores: {:?}", best_scores); // Muted print for vectorization scale
 
         let mut best_indices = Vec::new();
         for chunk in best_scores.chunks(chunk_size) {

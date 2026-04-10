@@ -4,6 +4,8 @@ use crate::layer::LayerPosition;
 use crate::synapse::{LayerId, SynapseId, WeightStats};
 use std::sync::{Arc, Mutex};
 
+pub static GLOBAL_LOGS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 /// State shared between training loop and visualization thread
 pub struct VisualizationState {
     pub model_structure: ModelStructure,
@@ -149,32 +151,46 @@ impl VisualizationState {
 /// Start the visualization in a separate thread
 pub fn start_visualization(state: Arc<Mutex<VisualizationState>>) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        let options = eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default()
-                .with_inner_size([1200.0, 800.0])
-                .with_title("Neural Network Visualization"),
-            event_loop_builder: Some(Box::new(|builder| {
-                // Enable any_thread for Linux to allow event loop on non-main thread
-                // This is necessary when visualization runs in a separate thread
-                #[cfg(target_os = "linux")]
-                {
-                    // Check which display server is in use
-                    if std::env::var("WAYLAND_DISPLAY").is_ok() {
-                        use winit::platform::wayland::EventLoopBuilderExtWayland;
-                        builder.with_any_thread(true);
-                    } else {
-                        use winit::platform::x11::EventLoopBuilderExtX11;
-                        builder.with_any_thread(true);
-                    }
-                }
-            })),
-            ..Default::default()
+        use crossterm::{
+            event::{DisableMouseCapture, EnableMouseCapture},
+            execute,
+            terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
         };
+        use ratatui::backend::CrosstermBackend;
+        use ratatui::Terminal;
+        use std::io;
 
-        let _ = eframe::run_native(
-            "Neural Network Visualization",
-            options,
-            Box::new(|_cc| Ok(Box::new(app::NeuralNetworkVisualizerApp::new(state)))),
-        );
+        // Setup terminal
+        enable_raw_mode().unwrap();
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        // Ensure cleanup on panic
+        let original_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic| {
+            let mut stdout = io::stdout();
+            let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+            let _ = disable_raw_mode();
+            original_hook(panic);
+        }));
+
+        let mut app = app::NeuralNetworkVisualizerApp::new(state);
+        let res = app.run(&mut terminal);
+
+        // Cleanup terminal
+        disable_raw_mode().unwrap();
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )
+        .unwrap();
+        terminal.show_cursor().unwrap();
+
+        if let Err(err) = res {
+            log::error!("{:?}", err);
+        }
     })
 }

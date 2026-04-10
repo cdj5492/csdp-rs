@@ -111,7 +111,7 @@ impl FFMultiLayer {
 
             if epoch % 10 == 0 || epoch == self.num_epochs - 1 {
                 let avg_loss = epoch_loss_sum / n_batches as f32;
-                println!("Layer {} - Epoch {} Loss: {:.4}", layer_idx, epoch, avg_loss);
+                log::info!("Layer {} - Epoch {} Loss: {:.4}", layer_idx, epoch, avg_loss);
             }
         }
 

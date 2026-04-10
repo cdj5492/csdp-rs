@@ -196,7 +196,7 @@ impl Algorithm for Algorithm3 {
                     break;
                 }
             }
-            println!("starting episode {}", episode);
+            log::info!("starting episode {}", episode);
             env.reset()?;
 
             let mut total_reward = 0.0;
@@ -255,7 +255,7 @@ impl Algorithm for Algorithm3 {
                 let q_base = self.evaluate_critic(&state_f32, &z_base_norm, None)?;
                 let q_pert = self.evaluate_critic(&state_f32, &z_pert_norm, None)?;
 
-                println!(
+                log::info!(
                     "Step {}: q_base = {:.2}, q_pert = {:.2}",
                     step, q_base, q_pert
                 );
@@ -386,7 +386,7 @@ impl Algorithm for Algorithm3 {
                     state.epoch_rewards.push((episode, total_reward as f32));
                 }
             }
-            println!("Episode {} total reward: {}", episode, total_reward);
+            log::info!("Episode {} total reward: {}", episode, total_reward);
         }
 
         let checkpoints_dir = std::path::Path::new("checkpoints");

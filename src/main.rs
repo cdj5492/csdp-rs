@@ -29,6 +29,23 @@ use algorithms::algorithm_ff_multi1::AlgorithmFFMulti1;
 use environment::Environment;
 use visualization::VisualizationState;
 
+struct VisLogger;
+impl log::Log for VisLogger {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool { true }
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            let msg = format!("[{}] {}", record.level(), record.args());
+            if let Ok(mut logs) = custom_framework::visualization::GLOBAL_LOGS.lock() {
+                logs.push(msg);
+                if logs.len() > 100 { logs.remove(0); }
+            }
+            // Optional: Also print to stderr if visualizing? It would disrupt Ratatui, so no.
+        }
+    }
+    fn flush(&self) {}
+}
+static LOGGER: VisLogger = VisLogger;
+
 fn parse_args() -> (bool, String, String, bool) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
@@ -58,20 +75,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (visualize, env_type, algo_choice, infinite_epochs) = parse_args();
 
+    if visualize {
+        let _ = log::set_logger(&LOGGER);
+        log::set_max_level(log::LevelFilter::Info);
+    } else {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    }
+
     let mut env: Box<dyn Environment> = if env_type == "grid" {
-        println!("Using Grid Environment.");
+        log::info!("Using Grid Environment.");
         Box::new(environment::grid::GridEnvironment::new())
     } else if env_type == "rocketsim" {
-        println!("Using RocketSim Environment.");
+        log::info!("Using RocketSim Environment.");
         Box::new(environment::rocketsim::RocketSimEnvironment::new(5)) // tickskip=5
     } else {
         match environment::robot::RobotEnvironment::new() {
             Ok(robot_env) => {
-                println!("Using physical Robot Environment.");
+                log::info!("Using physical Robot Environment.");
                 Box::new(robot_env)
             }
             Err(e) => {
-                println!(
+                log::info!(
                     "Failed to construct RobotEnvironment: {}. Falling back to Grid Environment.",
                     e
                 );
@@ -80,11 +104,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    println!(
+    log::info!(
         "Visualization: {}",
         if visualize { "enabled" } else { "disabled" }
     );
-    println!("Use --visualize or -v flag to enable visualization");
+    log::info!("Use --visualize or -v flag to enable visualization");
 
     let state_size = env.state_size();
     let action_size = env.action_size();
@@ -103,7 +127,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo_ff_multi1_opt = None;
 
     let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == "csdp1" {
-        println!("Using Algorithm CSDP1");
+        log::info!("Using Algorithm CSDP1");
         let mut algo = Algorithm1::new(
             state_size,
             action_size,
@@ -123,7 +147,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo1_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "csdp2" {
-        println!("Using Algorithm CSDP2");
+        log::info!("Using Algorithm CSDP2");
         let mut algo = Algorithm2::new(
             state_size,
             action_size,
@@ -143,7 +167,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo2_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "csdp3" {
-        println!("Using Algorithm CSDP3 (AC-CSDP)");
+        log::info!("Using Algorithm CSDP3 (AC-CSDP)");
         let mut algo = Algorithm3::new(
             state_size,
             action_size,
@@ -163,7 +187,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo3_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "csdp4" {
-        println!("Using Algorithm CSDP4");
+        log::info!("Using Algorithm CSDP4");
         let mut algo = Algorithm4::new(
             state_size,
             action_size,
@@ -183,7 +207,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo4_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff1" {
-        println!("Using Algorithm FF1 (FF Model - State/Action Iterator)");
+        log::info!("Using Algorithm FF1 (FF Model - State/Action Iterator)");
         let mut algo = AlgorithmFF1::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF1");
         if infinite_epochs {
@@ -198,7 +222,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo_ff1_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff2" {
-        println!("Using Algorithm FF2 (FF Model - Transition Evaluator)");
+        log::info!("Using Algorithm FF2 (FF Model - Transition Evaluator)");
         let mut algo = AlgorithmFF2::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF2");
         if infinite_epochs {
@@ -213,7 +237,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo_ff2_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff3" {
-        println!("Using Algorithm FF3 (FF Model - Probabilistic Rank Trajectory)");
+        log::info!("Using Algorithm FF3 (FF Model - Probabilistic Rank Trajectory)");
         let mut algo = AlgorithmFF3::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF3");
         if infinite_epochs {
@@ -228,7 +252,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo_ff3_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff4" {
-        println!("Using Algorithm FF4 (FF Model - Temporal Contrastive RL)");
+        log::info!("Using Algorithm FF4 (FF Model - Temporal Contrastive RL)");
         let mut algo = AlgorithmFF4::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF4");
         if infinite_epochs {
@@ -243,7 +267,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo_ff4_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ffsac" {
-        println!("Using Algorithm FFSAC (FF Model - Soft Actor-Critic)");
+        log::info!("Using Algorithm FFSAC (FF Model - Soft Actor-Critic)");
         let mut algo = AlgorithmFFSAC::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFFSAC");
         if infinite_epochs {
@@ -258,7 +282,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo_ffsac_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff_multi1" {
-        println!("Using Algorithm FF Multi 1 (FF Multi Model - Temporal Contrastive RL)");
+        log::info!("Using Algorithm FF Multi 1 (FF Multi Model - Temporal Contrastive RL)");
         let mut algo = AlgorithmFFMulti1::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFFMulti1");
         if infinite_epochs {
@@ -276,7 +300,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         panic!("Unknown algorithm choice: {}", algo_choice);
     };
 
-    println!("layers len: {}, num_synapses: {}", num_layers, num_synapses);
+    log::info!("layers len: {}, num_synapses: {}", num_layers, num_synapses);
 
     // Start visualization if requested
     let vis_handle = if visualize {
@@ -285,14 +309,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         // Initialize model structure
         if let Ok(mut state) = vis_state.lock() {
             if let Ok(snapshot) = snapshot_result {
-                println!(
+                log::info!(
                     "Initial snapshot: {} layers, {} synapses",
                     snapshot.layers.len(),
                     snapshot.synapses.len()
                 );
                 state.update_from_snapshot(snapshot);
             } else {
-                println!("Warning: Failed to get initial visualization snapshot");
+                log::info!("Warning: Failed to get initial visualization snapshot");
             }
         }
 
@@ -341,7 +365,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Signal visualization to close and wait for thread
     if let Some((handle, vis_state)) = vis_handle {
-        println!("Closing visualization...");
+        log::info!("Closing visualization...");
         while let Ok(state) = vis_state.lock() {
             if state.should_close {
                 break;
@@ -355,6 +379,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // drop env cleans up whatever depends on drops, e.g. RobotEnvironment::disable()
     drop(env);
 
-    println!("Done");
+    log::info!("Done");
     Ok(())
 }

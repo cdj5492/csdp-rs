@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 fn main() -> Result<(), Box<dyn Error>> {
     // Initialize Follower (Active Robot)
     // TTY: /dev/ttyACM1
-    println!("Initializing Follower on /dev/ttyACM1...");
+    log::info!("Initializing Follower on /dev/ttyACM1...");
     let mut follower = LeRobot::new(
         "/dev/ttyACM1",
         [-0.0276, -1.6, 1.29, 1.1, 0.254, -0.02],
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Initialize Leader (Passive Input Device)
     // TTY: /dev/ttyACM0
-    println!("Initializing Leader on /dev/ttyACM0...");
+    log::info!("Initializing Leader on /dev/ttyACM0...");
     let mut leader = LeRobot::new(
         "/dev/ttyACM2",
         [
@@ -37,15 +37,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     .expect("Failed to initialize leader");
 
     // Setup Robots
-    println!("Enabling Follower torque...");
+    log::info!("Enabling Follower torque...");
     follower.enable()?; // Active
 
-    println!("Disabling Leader torque (ready for manual input)...");
+    log::info!("Disabling Leader torque (ready for manual input)...");
     leader.disable()?; // Passive
 
     // Safety: Move Follower to match Leader's current position slowly
     // This prevents the follower from snapping violently if the leader is in a different pose
-    println!("Syncing start positions...");
+    log::info!("Syncing start positions...");
     if let Ok(start_pos) = leader.get_motor_positions()
         && start_pos.len() == 6
     {
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut input_buffer = String::new();
     io::stdin().read_line(&mut input_buffer)?;
 
-    println!("Teleoperation active! Press ENTER to STOP.");
+    log::info!("Teleoperation active! Press ENTER to STOP.");
 
     // Spawn thread to listen for Stop signal
     let keep_running = Arc::new(AtomicBool::new(true));
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Ok(positions) = leader.get_motor_positions()
             && positions.len() == 6
         {
-            println!("{:?}", positions);
+            log::info!("{:?}", positions);
             // Write Follower
             // We map 1:1, assuming the robots are physically identical or compatible
             follower.set_goal_positions(&[
@@ -110,10 +110,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Cleanup
-    println!("Stopping...");
+    log::info!("Stopping...");
     follower.disable()?;
     leader.disable()?;
-    println!("Both robots disabled.");
+    log::info!("Both robots disabled.");
 
     Ok(())
 }

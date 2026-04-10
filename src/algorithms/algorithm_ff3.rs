@@ -61,7 +61,7 @@ impl Algorithm for AlgorithmFF3 {
         }
 
         for episode in 1..=self.n_episodes {
-            println!("starting vectorized episode {} (x{})", episode, n_envs);
+            log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -152,7 +152,7 @@ impl Algorithm for AlgorithmFF3 {
                 }
             }
 
-            println!("Training phase: Probabilistic CEM Ranking");
+            log::info!("Training phase: Probabilistic CEM Ranking");
 
             let training_start = Instant::now();
             let mut pos_tensors = Vec::new();
@@ -186,7 +186,7 @@ impl Algorithm for AlgorithmFF3 {
             }
 
             if !pos_tensors.is_empty() && !neg_tensors.is_empty() {
-                println!(
+                log::info!(
                     "Rank partitioning created: {} positive / {} negative samples",
                     pos_tensors.len(), neg_tensors.len()
                 );
@@ -195,7 +195,7 @@ impl Algorithm for AlgorithmFF3 {
                 self.model.train(&pos_batch, &neg_batch)?;
                 _total_iteration += 1;
             } else {
-                println!("Warning: Skipping batch training (batch imbalance). Pos: {}, Neg: {}", pos_tensors.len(), neg_tensors.len());
+                log::info!("Warning: Skipping batch training (batch imbalance). Pos: {}, Neg: {}", pos_tensors.len(), neg_tensors.len());
             }
 
             let training_elapsed = training_start.elapsed();
@@ -212,13 +212,13 @@ impl Algorithm for AlgorithmFF3 {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
                 episode, total_rewards[0], inf_aps, ep_s
             );
         }
 
-        println!("Training completed.");
+        log::info!("Training completed.");
         if let Some(ref vis_state_arc) = vis_state {
             if let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");

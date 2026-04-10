@@ -20,7 +20,7 @@ pub struct OneHotLayer {
 
 impl OneHotLayer {
     pub fn new(bounds: Vec<usize>, device: &Device) -> CandleResult<Self> {
-        println!("constructing onehot layer with bounds: {:?}", bounds);
+        log::info!("constructing onehot layer with bounds: {:?}", bounds);
         let mut offsets = Vec::with_capacity(bounds.len());
         let mut total_size = 0;
         for &bound in &bounds {

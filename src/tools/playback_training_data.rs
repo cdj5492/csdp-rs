@@ -26,13 +26,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let default_path = "data/training_data.csv".to_string();
     let file_path = args.get(1).unwrap_or(&default_path);
 
-    println!("Loading data from {}...", file_path);
+    log::info!("Loading data from {}...", file_path);
     let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
     let records: Vec<RobotFrame> = rdr.deserialize().collect::<Result<_, _>>()?;
 
     if records.is_empty() {
-        println!("No records found.");
+        log::info!("No records found.");
         return Ok(());
     }
 
@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // [1.0, 1.7, 1.29, 1.2, 1.5, 1.1],
     )?;
 
-    println!("Moving to start position...");
+    log::info!("Moving to start position...");
 
     robot.enable()?;
 
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     robot.set_goal_positions(&[first.j1, first.j2, first.j3, first.j4, first.j5, first.j6])?;
     thread::sleep(Duration::from_millis(1500));
 
-    println!("Playback started. Press ENTER to stop early.");
+    log::info!("Playback started. Press ENTER to stop early.");
 
     // Spawn thread to listen for interrupt
     let keep_running = Arc::new(AtomicBool::new(true));
@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for frame in &records {
         // Check interrupt
         if !keep_running.load(Ordering::Relaxed) {
-            println!("Playback interrupted by user.");
+            log::info!("Playback interrupted by user.");
             break;
         }
 
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     robot.disable()?;
-    println!("Motors disabled. Done.");
+    log::info!("Motors disabled. Done.");
 
     Ok(())
 }

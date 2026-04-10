@@ -63,7 +63,7 @@ impl Algorithm for Algorithm1 {
         let state_size = env.state_size();
 
         for episode in 1..=self.n_episodes {
-            println!("starting episode {}", episode);
+            log::info!("starting episode {}", episode);
 
             env.reset()?;
             std::thread::sleep(Duration::from_millis(500)); // wait for environment to settle
@@ -103,7 +103,7 @@ impl Algorithm for Algorithm1 {
                     }
                 }
 
-                println!("best action: {}", best_action);
+                log::info!("best action: {}", best_action);
 
                 // Add the true reward for the chosen action to the episode's total reward
                 total_reward += env.evaluate_action(&current_state, best_action);
@@ -160,7 +160,7 @@ impl Algorithm for Algorithm1 {
             if let Some(state_arc) = &vis_state {
                 if let Ok(mut lock) = state_arc.lock() {
                     if lock.save_requested {
-                        println!("Manual save requested...");
+                        log::info!("Manual save requested...");
                         let checkpoints_dir = std::path::Path::new("checkpoints");
                         if !checkpoints_dir.exists() {
                             std::fs::create_dir_all(checkpoints_dir)?;
@@ -168,14 +168,14 @@ impl Algorithm for Algorithm1 {
                         let path =
                             checkpoints_dir.join(format!("model_epoch_{}.safetensors", episode));
                         match self.model.save(&path) {
-                            Ok(_) => println!("Successfully saved model to {:?}", path),
-                            Err(e) => println!("Failed to save model: {}", e),
+                            Ok(_) => log::info!("Successfully saved model to {:?}", path),
+                            Err(e) => log::info!("Failed to save model: {}", e),
                         }
                         lock.save_requested = false;
                     }
 
                     if lock.load_requested {
-                        println!("Manual load requested...");
+                        log::info!("Manual load requested...");
                         let checkpoints_dir = std::path::Path::new("checkpoints");
                         if checkpoints_dir.exists() {
                             // Find the most recently modified safetensors file
@@ -201,19 +201,19 @@ impl Algorithm for Algorithm1 {
                             }
 
                             if let Some(path) = latest_file {
-                                println!("Loading model from {:?}...", path);
+                                log::info!("Loading model from {:?}...", path);
                                 match self.model.load(&path) {
-                                    Ok(_) => println!("Successfully loaded model."),
-                                    Err(e) => println!(
+                                    Ok(_) => log::info!("Successfully loaded model."),
+                                    Err(e) => log::info!(
                                         "Failed to load model (possibly shape mismatch): {}",
                                         e
                                     ),
                                 }
                             } else {
-                                println!("No .safetensors file found in checkpoints/");
+                                log::info!("No .safetensors file found in checkpoints/");
                             }
                         } else {
-                            println!("checkpoints directory does not exist.");
+                            log::info!("checkpoints directory does not exist.");
                         }
                         lock.load_requested = false;
                     }
@@ -299,22 +299,22 @@ impl Algorithm for Algorithm1 {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
                 episode, inf_aps, ep_s
             );
         } // end of episodes
 
         // Final auto-save
-        println!("Training completed. Auto-saving final model...");
+        log::info!("Training completed. Auto-saving final model...");
         let checkpoints_dir = std::path::Path::new("checkpoints");
         if !checkpoints_dir.exists() {
             std::fs::create_dir_all(checkpoints_dir)?;
         }
         let final_path = checkpoints_dir.join("model_final.safetensors");
         match self.model.save(&final_path) {
-            Ok(_) => println!("Successfully saved final model to {:?}", final_path),
-            Err(e) => println!("Failed to save final model: {}", e),
+            Ok(_) => log::info!("Successfully saved final model to {:?}", final_path),
+            Err(e) => log::info!("Failed to save final model: {}", e),
         }
 
         if let Some(ref vis_state_arc) = vis_state {

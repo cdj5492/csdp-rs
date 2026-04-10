@@ -63,7 +63,7 @@ impl Algorithm for AlgorithmFFMulti1 {
         }
 
         for episode in 1..=self.n_episodes {
-            println!("starting vectorized episode {} (x{})", episode, n_envs);
+            log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -99,7 +99,7 @@ impl Algorithm for AlgorithmFFMulti1 {
                     let chunk_scores = &scores_vec[chunk_start..chunk_start + action_size];
 
                     if episode % 10 == 0 && _step == 0 && env_idx == 0 {
-                        println!("Ep {} Step 0 | Goodness Scores: {:.4?}", episode, chunk_scores);
+                        log::info!("Ep {} Step 0 | Goodness Scores: {:.4?}", episode, chunk_scores);
                     }
 
                     let max_g = chunk_scores
@@ -181,7 +181,7 @@ impl Algorithm for AlgorithmFFMulti1 {
                 }
             }
 
-            println!("Training phase: Multi-Class FF Contrastive RL");
+            log::info!("Training phase: Multi-Class FF Contrastive RL");
 
             let gamma = 0.99f32;
 
@@ -198,7 +198,7 @@ impl Algorithm for AlgorithmFFMulti1 {
             }
 
             if self.buffer.len() > 200000 {
-                println!("Draining replay buffer...");
+                log::info!("Draining replay buffer...");
                 let drain_count = self.buffer.len() - 200000;
                 self.buffer.drain(0..drain_count);
             }
@@ -240,7 +240,7 @@ impl Algorithm for AlgorithmFFMulti1 {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {} Tracking Env Reward: {:.2}] ActionEval/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
                 episode,
                 raw_rewards.iter().sum::<f64>(),
@@ -250,7 +250,7 @@ impl Algorithm for AlgorithmFFMulti1 {
             );
         }
 
-        println!("Training completed.");
+        log::info!("Training completed.");
         if let Some(ref vis_state_arc) = vis_state {
             if let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");

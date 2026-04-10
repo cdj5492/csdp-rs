@@ -64,7 +64,7 @@ impl Algorithm for AlgorithmFF2 {
         }
 
         for episode in 1..=self.n_episodes {
-            println!("starting vectorized episode {} (x{})", episode, n_envs);
+            log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -165,7 +165,7 @@ impl Algorithm for AlgorithmFF2 {
             let mut train_data = Vec::new();
             let mut rng = rand::thread_rng();
 
-            println!("Pairing and augmenting data across {} envs...", n_envs);
+            log::info!("Pairing and augmenting data across {} envs...", n_envs);
             for env_idx in 0..n_envs {
                 let n_states = episode_states[env_idx].len();
                 if n_states > 1 {
@@ -217,7 +217,7 @@ impl Algorithm for AlgorithmFF2 {
             }
 
             if !pos_tensors.is_empty() {
-                println!(
+                log::info!(
                     "Training with batch size {} over generated trajectories",
                     pos_tensors.len()
                 );
@@ -241,7 +241,7 @@ impl Algorithm for AlgorithmFF2 {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
                 episode, total_rewards[0], inf_aps, ep_s
             );

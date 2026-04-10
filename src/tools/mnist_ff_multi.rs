@@ -17,7 +17,7 @@ fn download_if_needed(filename: &str) -> std::io::Result<()> {
         return Ok(());
     }
     let url = format!("{}{}", MNIST_BASE_URL, filename);
-    println!("Downloading {}...", url);
+    log::info!("Downloading {}...", url);
     let resp = std::process::Command::new("curl")
         .args(["-sL", "-o", path.to_str().unwrap(), &url])
         .status()?;
@@ -43,7 +43,7 @@ fn read_mnist_images(filename: &str) -> Vec<Vec<f32>> {
     let cols = u32::from_be_bytes([buf[12], buf[13], buf[14], buf[15]]) as usize;
     let pixel_size = rows * cols;
 
-    println!(
+    log::info!(
         "  Loaded {} images of size {}x{} from {}",
         count, rows, cols, filename
     );
@@ -68,13 +68,13 @@ fn read_mnist_labels(filename: &str) -> Vec<usize> {
     decoder.read_to_end(&mut buf).expect("Failed to decompress");
 
     let count = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]) as usize;
-    println!("  Loaded {} labels from {}", count, filename);
+    log::info!("  Loaded {} labels from {}", count, filename);
 
     buf[8..8 + count].iter().map(|&b| b as usize).collect()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== MNIST Multi-Class Forward-Forward Benchmark ===\n");
+    log::info!("=== MNIST Multi-Class Forward-Forward Benchmark ===\n");
 
     // Download MNIST data files
     download_if_needed("train-images-idx3-ubyte.gz")?;
@@ -82,14 +82,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     download_if_needed("t10k-images-idx3-ubyte.gz")?;
     download_if_needed("t10k-labels-idx1-ubyte.gz")?;
 
-    println!("\nLoading dataset...");
+    log::info!("\nLoading dataset...");
     let train_images = read_mnist_images("train-images-idx3-ubyte.gz");
     let train_labels = read_mnist_labels("train-labels-idx1-ubyte.gz");
     let test_images = read_mnist_images("t10k-images-idx3-ubyte.gz");
     let test_labels = read_mnist_labels("t10k-labels-idx1-ubyte.gz");
 
     let device = Device::new_cuda(0).unwrap_or(Device::Cpu);
-    println!("\nUsing device: {:?}", device);
+    log::info!("\nUsing device: {:?}", device);
 
     // Flatten all training images into a single [N, 784] tensor
     let n_train = train_images.len();
@@ -109,23 +109,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dims = vec![input_size];
     dims.extend(&hidden_sizes);
 
-    println!("\n--- Model Config ---");
-    println!("  Input:   {}", input_size);
-    println!("  Hidden:  {:?}", hidden_sizes);
-    println!("  Classes: {}", num_classes);
-    println!("  Epochs:  {} per layer", epochs_per_layer);
-    println!("  Train N: {}", n_train);
-    println!("  Test N:  {}", n_test);
+    log::info!("\n--- Model Config ---");
+    log::info!("  Input:   {}", input_size);
+    log::info!("  Hidden:  {:?}", hidden_sizes);
+    log::info!("  Classes: {}", num_classes);
+    log::info!("  Epochs:  {} per layer", epochs_per_layer);
+    log::info!("  Train N: {}", n_train);
+    log::info!("  Test N:  {}", n_test);
 
     let mut model = FFMultiModel::new(&dims, num_classes, &device, epochs_per_layer)?;
 
-    println!("\n--- Training ---");
+    log::info!("\n--- Training ---");
     let start = Instant::now();
     model.train(&train_tensor, &train_labels)?;
     let train_time = start.elapsed();
-    println!("Training complete in {:.2}s\n", train_time.as_secs_f64());
+    log::info!("Training complete in {:.2}s\n", train_time.as_secs_f64());
 
-    println!("--- Evaluation ---");
+    log::info!("--- Evaluation ---");
     let eval_start = Instant::now();
     let predictions = model.predict(&[test_tensor])?;
     let eval_time = eval_start.elapsed();
@@ -138,8 +138,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let accuracy = correct as f64 / n_test as f64 * 100.0;
 
-    println!("Evaluation complete in {:.3}s", eval_time.as_secs_f64());
-    println!(
+    log::info!("Evaluation complete in {:.3}s", eval_time.as_secs_f64());
+    log::info!(
         "\n  Test Accuracy: {} / {} ({:.2}%)\n",
         correct, n_test, accuracy
     );
@@ -153,14 +153,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             class_correct[label] += 1;
         }
     }
-    println!("  Per-class accuracy:");
+    log::info!("  Per-class accuracy:");
     for c in 0..num_classes {
         let acc = if class_total[c] > 0 {
             class_correct[c] as f64 / class_total[c] as f64 * 100.0
         } else {
             0.0
         };
-        println!(
+        log::info!(
             "    Digit {}: {:4} / {:4} ({:.1}%)",
             c, class_correct[c], class_total[c], acc
         );

@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     thread::sleep(Duration::from_millis(1000));
 
     robot.disable()?;
-    println!("Robot initialized and torque disabled.");
+    log::info!("Robot initialized and torque disabled.");
 
     // 1. Blocking wait for Start
     print!("Press ENTER to START recording...");
@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut input_buffer = String::new();
     io::stdin().read_line(&mut input_buffer)?;
 
-    println!("Recording started... Press ENTER to STOP.");
+    log::info!("Recording started... Press ENTER to STOP.");
 
     // 2. Spawn a thread to listen for the Stop signal (Enter key)
     let keep_running = Arc::new(AtomicBool::new(true));
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let default_filename = "data/training_data.csv".to_string();
     let filename = args.get(1).unwrap_or(&default_filename);
 
-    println!("Saving {} frames to {}...", records.len(), filename);
+    log::info!("Saving {} frames to {}...", records.len(), filename);
 
     let file = File::create(filename)?;
     let mut wtr = csv::Writer::from_writer(file);
@@ -105,6 +105,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     wtr.flush()?;
 
-    println!("Done.");
+    log::info!("Done.");
     Ok(())
 }

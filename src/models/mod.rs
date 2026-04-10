@@ -237,7 +237,7 @@ impl Model {
                 synapse_type: format!("{:?}", syn_config.synapse_type),
                 is_learning: true,
             };
-            println!("creating synapse: {:?}", metadata);
+            log::info!("creating synapse: {:?}", metadata);
             synapses.push(SynapseConnection { metadata, synapse });
         }
 

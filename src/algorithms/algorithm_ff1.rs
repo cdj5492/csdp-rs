@@ -61,7 +61,7 @@ impl Algorithm for AlgorithmFF1 {
         }
 
         for episode in 1..=self.n_episodes {
-            println!("starting vectorized episode {} (x{})", episode, n_envs);
+            log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -109,7 +109,7 @@ impl Algorithm for AlgorithmFF1 {
                     }
 
                     if env_idx == 0 {
-                        // println!("best action on tracking env: {}", action);
+                        // log::info!("best action on tracking env: {}", action);
                     }
 
                     total_rewards[env_idx] += e.evaluate_action(current_state, action);
@@ -164,7 +164,7 @@ impl Algorithm for AlgorithmFF1 {
                 }
             }
 
-            println!("Training phase");
+            log::info!("Training phase");
 
             // Train on collected episode data
             let training_start = Instant::now();
@@ -197,13 +197,13 @@ impl Algorithm for AlgorithmFF1 {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
                 episode, total_rewards[0], inf_aps, ep_s
             );
         }
 
-        println!("Training completed.");
+        log::info!("Training completed.");
         if let Some(ref vis_state_arc) = vis_state {
             if let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");

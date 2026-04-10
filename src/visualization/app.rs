@@ -1,7 +1,20 @@
-use super::{LayerVisInfo, ModelStructure, RuntimeStats, SynapseVisInfo, VisualizationState};
+use super::{ModelStructure, VisualizationState};
 use crate::synapse::LayerId;
-use egui::{Color32, Pos2, Rect, Stroke, Vec2};
+use ratatui::{
+    backend::Backend,
+    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{
+        canvas::{Canvas, Line as CanvasLine, Circle, Points},
+        Block, Borders, Gauge, List, ListItem, Paragraph, ListState,
+        Chart, Axis, Dataset, GraphType, Tabs,
+    },
+    Frame,
+};
+use crossterm::event::{self, Event, KeyCode, MouseEventKind};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub struct NeuralNetworkVisualizerApp {
     vis_state: Arc<Mutex<VisualizationState>>,
@@ -10,11 +23,15 @@ pub struct NeuralNetworkVisualizerApp {
     link_force: f32,
     center_force: f32,
     link_distance: f32,
+    
     selected_layer_id: Option<LayerId>,
     spike_history: Vec<Vec<f32>>,
-    raster_texture: Option<egui::TextureHandle>,
     displayed_epoch: usize,
-    zoom: f32,
+    
+    log_state: ListState,
+    show_help: bool,
+    active_tab: usize,
+    user_scrolled: bool,
 }
 
 impl NeuralNetworkVisualizerApp {
@@ -28,69 +45,145 @@ impl NeuralNetworkVisualizerApp {
             link_distance: 150.0,
             selected_layer_id: None,
             spike_history: Vec::new(),
-            raster_texture: None,
             displayed_epoch: 0,
-            zoom: 1.0,
+            log_state: ListState::default(),
+            show_help: false,
+            active_tab: 0,
+            user_scrolled: false,
         }
     }
 
-    fn draw_stats_panel(
-        &mut self,
-        ui: &mut egui::Ui,
-        stats: &RuntimeStats,
-        total_epochs: usize,
-        is_paused: bool,
-    ) {
-        ui.horizontal(|ui| {
-            let button_text = if is_paused { "▶ Resume" } else { "⏸ Pause" };
-            if ui.button(button_text).clicked()
-                && let Ok(mut state) = self.vis_state.try_lock()
-            {
-                state.is_paused = !state.is_paused;
-            }
-            ui.separator();
-            ui.label(format!("Epoch: {}/{}", stats.epoch, total_epochs));
-            ui.separator();
-            ui.label(format!("Iteration: {}", stats.iteration));
-            ui.separator();
-            ui.label(format!("Timestep: {}", stats.timestep));
-            ui.separator();
-            ui.label(format!("Speed: {:.1} it/s", stats.iterations_per_second));
+    pub fn run<B: Backend>(&mut self, terminal: &mut ratatui::Terminal<B>) -> Result<(), std::io::Error>
+    where
+        std::io::Error: From<B::Error>,
+    {
+        let tick_rate = Duration::from_millis(50);
+        let mut last_tick = std::time::Instant::now();
 
-            ui.separator();
-            if ui.button("💾 Save Latest").clicked() {
-                if let Ok(mut state) = self.vis_state.try_lock() {
-                    state.save_requested = true;
-                    // Export graphs
-                    let path = std::path::Path::new("checkpoints/epoch_rewards.csv");
-                    if let Err(e) = state.save_graphs_to_csv(path) {
-                        println!("Failed to save graph CSV: {}", e);
-                    } else {
-                        println!("Successfully saved graph CSV to {:?}", path);
-                    }
-                }
-            }
-            if ui.button("📂 Load Local").clicked() {
-                if let Ok(mut state) = self.vis_state.try_lock() {
-                    state.load_requested = true;
-                }
-            }
-        });
+        loop {
+            // Check state for should_close
+            let should_close = if let Ok(state) = self.vis_state.lock() {
+                state.should_close
+            } else { false };
 
-        ui.add_space(5.0);
-        let progress = if total_epochs > 0 {
-            stats.epoch as f32 / total_epochs as f32
-        } else {
-            0.0
-        };
-        ui.add(
-            egui::ProgressBar::new(progress)
-                .show_percentage()
-                .text(format!("Training Progress: {:.1}%", progress * 100.0)),
-        );
+            if should_close {
+                return Ok(());
+            }
+
+            let timeout = tick_rate.saturating_sub(last_tick.elapsed());
+            if crossterm::event::poll(timeout)? {
+                let event = event::read()?;
+                self.handle_event(event);
+            }
+
+            if last_tick.elapsed() >= tick_rate {
+                let vis_state = Arc::clone(&self.vis_state);
+                if let Ok(mut state) = vis_state.lock() {
+                    self.update_force_layout(&mut state.model_structure);
+                }
+                terminal.draw(|f| self.draw(f))?;
+                last_tick = std::time::Instant::now();
+            }
+        }
     }
 
-    fn update_force_layout(&mut self, model: &mut crate::visualization::ModelStructure) {
+    fn cycle_selection(&mut self, dir: isize) {
+        if let Ok(mut state) = self.vis_state.lock() {
+            let layers = &state.model_structure.layers;
+            if layers.is_empty() { return; }
+            
+            let current_idx = if let Some(id) = state.selected_layer_id {
+                layers.iter().position(|l| l.id == id).unwrap_or(0) as isize
+            } else {
+                -1
+            };
+            
+            let mut next_idx = current_idx + dir;
+            if next_idx < 0 {
+                next_idx = layers.len() as isize - 1;
+            } else if next_idx >= layers.len() as isize {
+                next_idx = 0;
+            }
+            
+            state.selected_layer_id = Some(layers[next_idx as usize].id);
+            self.selected_layer_id = state.selected_layer_id;
+            state.epoch_spike_history = None;
+            self.spike_history.clear();
+        }
+    }
+
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::Key(key) => {
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.should_close = true;
+                        }
+                    }
+                    KeyCode::Char('p') => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.is_paused = !state.is_paused;
+                        }
+                    }
+                    KeyCode::Char('s') => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.save_requested = true;
+                            let path = std::path::Path::new("checkpoints/epoch_rewards.csv");
+                            let _ = state.save_graphs_to_csv(path);
+                        }
+                    }
+                    KeyCode::Char('l') => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.load_requested = true;
+                        }
+                    }
+                    KeyCode::Char('?') => {
+                        self.show_help = !self.show_help;
+                    }
+                    KeyCode::Tab => {
+                        self.active_tab = (self.active_tab + 1) % 3;
+                    }
+                    KeyCode::Right => {
+                        self.cycle_selection(1);
+                    }
+                    KeyCode::Left => {
+                        self.cycle_selection(-1);
+                    }
+                    KeyCode::Up => {
+                        let i = self.log_state.selected().unwrap_or(0);
+                        self.log_state.select(Some(i.saturating_sub(1)));
+                        self.user_scrolled = true;
+                    }
+                    KeyCode::Down => {
+                        let i = self.log_state.selected().unwrap_or(0);
+                        self.log_state.select(Some(i + 1));
+                        self.user_scrolled = true;
+                    }
+                    _ => {}
+                }
+            }
+            Event::Mouse(mouse) => {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        let i = self.log_state.selected().unwrap_or(0);
+                        self.log_state.select(Some(i.saturating_sub(1)));
+                        self.user_scrolled = true;
+                    }
+                    MouseEventKind::ScrollDown => {
+                        let i = self.log_state.selected().unwrap_or(0);
+                        self.log_state.select(Some(i + 1));
+                        self.user_scrolled = true;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Force layout physics for beautiful representation
+    fn update_force_layout(&mut self, model: &mut ModelStructure) {
         const DAMPING: f32 = 0.8;
         const MIN_DISTANCE: f32 = 50.0;
 
@@ -154,631 +247,413 @@ impl NeuralNetworkVisualizerApp {
             vel.1 = (vel.1 + forces[i].1) * DAMPING;
             layer.position.x += vel.0;
             layer.position.y += vel.1;
+            // Bound within Canvas space (0..1000, 0..400)
             layer.position.x = layer.position.x.clamp(50.0, 950.0);
             layer.position.y = layer.position.y.clamp(50.0, 350.0);
         }
     }
 
-    fn draw_curved_arrow(
-        &self,
-        painter: &egui::Painter,
-        from: Pos2,
-        to: Pos2,
-        curvature: f32,
-        thickness: f32,
-        color: Color32,
-    ) {
-        let mid = Pos2::new((from.x + to.x) / 2.0, (from.y + to.y) / 2.0);
-        let dx = to.x - from.x;
-        let dy = to.y - from.y;
-        let perp_x = -dy;
-        let perp_y = dx;
-        let len = (perp_x * perp_x + perp_y * perp_y).sqrt();
-        let control = if len > 0.0 {
-            Pos2::new(
-                mid.x + (perp_x / len) * curvature,
-                mid.y + (perp_y / len) * curvature,
-            )
-        } else {
-            mid
-        };
+    fn draw(&mut self, f: &mut Frame) {
+        let size = f.area();
 
-        let segments = 20;
-        let mut points = Vec::new();
-        for i in 0..=segments {
-            let t = i as f32 / segments as f32;
-            let t2 = 1.0 - t;
-            let x = t2 * t2 * from.x + 2.0 * t2 * t * control.x + t * t * to.x;
-            let y = t2 * t2 * from.y + 2.0 * t2 * t * control.y + t * t * to.y;
-            points.push(Pos2::new(x, y));
-        }
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([
+                Constraint::Length(3), // Header/Stats
+                Constraint::Length(3), // Tabs
+                Constraint::Min(0),    // Main content
+                Constraint::Length(10), // Logs
+            ])
+            .split(size);
 
-        for i in 0..segments {
-            painter.line_segment([points[i], points[i + 1]], Stroke::new(thickness, color));
-        }
+        let vis_state = Arc::clone(&self.vis_state);
+        if let Ok(mut state) = vis_state.try_lock() {
+            self.selected_layer_id = state.selected_layer_id;
 
-        let arrow_len: f32 = 10.0;
-        let arrow_angle: f32 = 0.5;
+            if let Some((epoch, history)) = state.epoch_spike_history.take() {
+                if self.displayed_epoch != epoch {
+                    self.spike_history = history;
+                    self.displayed_epoch = epoch;
+                }
+            }
+            
+            self.draw_header(f, chunks[0], &state);
 
-        let mid_t = 0.5;
-        let mt2 = 1.0 - mid_t;
-        let arrow_tip = Pos2::new(
-            mt2 * mt2 * from.x + 2.0 * mt2 * mid_t * control.x + mid_t * mid_t * to.x,
-            mt2 * mt2 * from.y + 2.0 * mt2 * mid_t * control.y + mid_t * mid_t * to.y,
-        );
-
-        let dir_x = to.x - from.x;
-        let dir_y = to.y - from.y;
-        let dir_len = (dir_x * dir_x + dir_y * dir_y).sqrt();
-
-        if dir_len > 0.0 {
-            let dx = dir_x / dir_len;
-            let dy = dir_y / dir_len;
-
-            let cos_a = arrow_angle.cos();
-            let sin_a = arrow_angle.sin();
-
-            let left = Pos2::new(
-                arrow_tip.x - arrow_len * (dx * cos_a - dy * sin_a),
-                arrow_tip.y - arrow_len * (dx * sin_a + dy * cos_a),
-            );
-            let right = Pos2::new(
-                arrow_tip.x - arrow_len * (dx * cos_a + dy * sin_a),
-                arrow_tip.y - arrow_len * (dy * cos_a - dx * sin_a),
-            );
-
-            painter.line_segment([arrow_tip, left], Stroke::new(thickness, color));
-            painter.line_segment([arrow_tip, right], Stroke::new(thickness, color));
-        }
-    }
-
-    fn draw_network(
-        &mut self,
-        ui: &mut egui::Ui,
-        model: &mut crate::visualization::ModelStructure,
-    ) {
-        let (response, painter) = ui.allocate_painter(ui.available_size(), egui::Sense::click());
-        painter.rect_filled(response.rect, 0.0, ui.style().visuals.extreme_bg_color);
-
-        if model.layers.is_empty() {
-            painter.text(
-                response.rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "Waiting for model data...",
-                egui::FontId::proportional(16.0),
-                Color32::WHITE,
-            );
-            return;
-        }
-
-        self.update_force_layout(model);
-
-        let to_screen = egui::emath::RectTransform::from_to(
-            Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 400.0)),
-            response.rect,
-        );
-
-        let mut synapse_pairs: std::collections::HashMap<(LayerId, LayerId), Vec<&SynapseVisInfo>> =
-            std::collections::HashMap::new();
-        for synapse in &model.synapses {
-            let key = (
-                synapse.pre_layer.min(synapse.post_layer),
-                synapse.pre_layer.max(synapse.post_layer),
-            );
-            synapse_pairs.entry(key).or_default().push(synapse);
-        }
-
-        for synapse in &model.synapses {
-            if let (Some(pre_layer), Some(post_layer)) = (
-                model.layers.iter().find(|l| l.id == synapse.pre_layer),
-                model.layers.iter().find(|l| l.id == synapse.post_layer),
-            ) {
-                let pre_pos =
-                    to_screen.transform_pos(Pos2::new(pre_layer.position.x, pre_layer.position.y));
-                let post_pos = to_screen
-                    .transform_pos(Pos2::new(post_layer.position.x, post_layer.position.y));
-                let thickness = (synapse.weight_stats.mean.abs() * 2.0).clamp(0.5, 5.0);
-                let key = (
-                    synapse.pre_layer.min(synapse.post_layer),
-                    synapse.pre_layer.max(synapse.post_layer),
-                );
-                let has_bidirectional = synapse_pairs
-                    .get(&key)
-                    .map(|v| v.len() > 1)
-                    .unwrap_or(false);
-                let curvature = if has_bidirectional { 30.0 } else { 0.0 };
-                self.draw_curved_arrow(
-                    &painter,
-                    pre_pos,
-                    post_pos,
-                    curvature,
-                    thickness,
-                    Color32::from_gray(150),
-                );
+            let titles = vec!["Network Topology", "Environment", "Analysis"]
+                .into_iter()
+                .map(|t| Line::from(Span::styled(t, Style::default().fg(Color::White))))
+                .collect::<Vec<_>>();
+                
+            let tabs = Tabs::new(titles)
+                .block(Block::default().borders(Borders::ALL).title("Views"))
+                .select(self.active_tab)
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow));
+                
+            f.render_widget(tabs, chunks[1]);
+            
+            match self.active_tab {
+                0 => {
+                    let main_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Percentage(75), Constraint::Percentage(25)])
+                        .split(chunks[2]);
+                    self.draw_network(f, main_chunks[0], &state.model_structure);
+                    self.draw_details(f, main_chunks[1], &state.model_structure);
+                }
+                1 => {
+                    self.draw_env_state(f, chunks[2], &state);
+                }
+                2 => {
+                    let side_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                        .split(chunks[2]);
+                    self.draw_rewards(f, side_chunks[0], &state);
+                    self.draw_raster(f, side_chunks[1], &state.model_structure);
+                }
+                _ => {}
             }
         }
 
-        for layer in &model.layers {
-            self.draw_layer(&painter, layer, &to_screen, &response);
-        }
+        self.draw_logs(f, chunks[3]);
 
-        painter.rect_stroke(
-            response.rect,
-            0.0,
-            Stroke::new(1.0, Color32::from_gray(100)),
-            egui::epaint::StrokeKind::Outside,
-        );
+        if self.show_help {
+            self.draw_help(f, size);
+        }
+    }
+    
+    fn draw_env_state(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
+        if let Some(env_state) = &state.environment_state {
+            if env_state.len() == 4 {
+                // Grid visualization
+                let px = env_state[0] + env_state[2];
+                let py = env_state[1] + env_state[3];
+                let gx = env_state[2];
+                let gy = env_state[3];
+                let grid_size = 50.0;
+                
+                let canvas = Canvas::default()
+                    .block(Block::default().borders(Borders::ALL).title("Env: Grid 50x50 (Yellow=Player, Green=Goal)"))
+                    .marker(ratatui::symbols::Marker::HalfBlock)
+                    .x_bounds([0.0, grid_size])
+                    .y_bounds([0.0, grid_size])
+                    .paint(move |ctx| {
+                        ctx.draw(&Points { coords: &[(gx as f64, grid_size - gy as f64)], color: Color::Green });
+                        ctx.draw(&Points { coords: &[(px as f64, grid_size - py as f64)], color: Color::Yellow });
+                    });
+                f.render_widget(canvas, area);
+            } else if env_state.len() == 6 {
+                // Robot arm visualization
+                let text = env_state.iter().enumerate().map(|(i, &v)| format!("J{}:{:.1}", i, v)).collect::<Vec<_>>().join(" ");
+                let p = Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Env State: Robot"));
+                f.render_widget(p, area);
+            } else {
+                let text = env_state.iter().enumerate().map(|(i, &v)| format!("D{}:{:.1}", i, v)).collect::<Vec<_>>().join(" ");
+                let p = Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Env State"));
+                f.render_widget(p, area);
+            }
+        } else {
+            let p = Paragraph::new("No Environment Data").block(Block::default().borders(Borders::ALL).title("Env State"));
+            f.render_widget(p, area);
+        }
     }
 
-    fn draw_layer(
-        &mut self,
-        painter: &egui::Painter,
-        layer: &LayerVisInfo,
-        transform: &egui::emath::RectTransform,
-        response: &egui::Response,
-    ) {
-        let world_pos = Pos2::new(layer.position.x, layer.position.y);
-        let pos = transform.transform_pos(world_pos);
-        let base_size = 20.0 + (layer.size as f32).log10() * 15.0;
+    fn draw_header(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
+        let text = format!(
+            "Epoch: {}/{} | Iter: {} | Speed: {:.1} it/s | State: {} | Press '?' for Help",
+            state.runtime_stats.epoch,
+            state.total_epochs,
+            state.runtime_stats.iteration,
+            state.runtime_stats.iterations_per_second,
+            if state.is_paused { "PAUSED" } else { "RUNNING" }
+        );
 
-        let activity_ratio = if layer.size > 0 {
-            layer.spike_count as f32 / layer.size as f32
+        let progress = if state.total_epochs > 0 {
+            (state.runtime_stats.epoch as f32 / state.total_epochs as f32).clamp(0.0, 1.0)
         } else {
             0.0
         };
-        let color = Color32::from_rgb(
-            (activity_ratio * 255.0) as u8,
-            100,
-            (255.0 - activity_ratio * 200.0) as u8,
-        );
 
-        painter.circle_filled(pos, base_size, color);
-        painter.circle_stroke(pos, base_size, Stroke::new(2.0, Color32::BLACK));
-
-        if self.selected_layer_id == Some(layer.id) {
-            painter.circle_stroke(pos, base_size + 4.0, Stroke::new(2.0, Color32::YELLOW));
-        }
-
-        painter.text(
-            pos,
-            egui::Align2::CENTER_CENTER,
-            &layer.name,
-            egui::FontId::proportional(12.0),
-            Color32::WHITE,
-        );
-
-        let click_radius = base_size;
-        let rect = Rect::from_center_size(pos, Vec2::splat(click_radius * 2.0));
-
-        if response.clicked()
-            && let Some(click_pos) = response.interact_pointer_pos()
-            && rect.contains(click_pos)
-            && let Ok(mut state) = self.vis_state.lock()
-        {
-            if state.selected_layer_id == Some(layer.id) {
-                state.selected_layer_id = None;
-                self.spike_history.clear();
-            } else {
-                state.selected_layer_id = Some(layer.id);
-                self.spike_history.clear();
-            }
-        }
-
-        if response.hovered()
-            && let Some(hover_pos) = response.hover_pos()
-            && rect.contains(hover_pos)
-        {
-            egui::Area::new(egui::Id::new(format!("layer_tooltip_{}", layer.id)))
-                .fixed_pos(hover_pos + Vec2::new(10.0, 10.0))
-                .show(&response.ctx, |ui| {
-                    egui::Frame::popup(ui.style()).show(ui, |ui| {
-                        ui.label(format!("Layer: {}", layer.name));
-                        ui.label(format!("Type: {}", layer.layer_type));
-                        ui.label(format!("Size: {} neurons", layer.size));
-                        ui.label(format!("Active: {} neurons", layer.spike_count));
-                        ui.label(format!("Activity: {:.1}%", activity_ratio * 100.0));
-                    });
-                });
-        }
+        let gauge = Gauge::default()
+            .block(Block::default().borders(Borders::ALL).title("Training Progress"))
+            .gauge_style(Style::default().fg(Color::Green).bg(Color::Black).add_modifier(Modifier::BOLD))
+            .ratio(progress as f64)
+            .label(text);
+        
+        f.render_widget(gauge, area);
     }
 
-    fn draw_synapse_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
-        ui.heading("Synapse Details");
-        ui.separator();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            if model.synapses.is_empty() {
-                ui.label("No synapses to display.");
-            } else {
+    fn draw_network(&self, f: &mut Frame, area: Rect, model: &ModelStructure) {
+        let canvas = Canvas::default()
+            .block(Block::default().borders(Borders::ALL).title("Network Topology"))
+            .x_bounds([0.0, 1000.0])
+            .y_bounds([0.0, 400.0])
+            .paint(|ctx| {
+                // Draw Curved Synapses 
                 for synapse in &model.synapses {
-                    let pre_layer_name = model
-                        .layers
-                        .iter()
-                        .find(|l| l.id == synapse.pre_layer)
-                        .map_or("Unknown".to_string(), |l| l.name.clone());
-                    let post_layer_name = model
-                        .layers
-                        .iter()
-                        .find(|l| l.id == synapse.post_layer)
-                        .map_or("Unknown".to_string(), |l| l.name.clone());
+                    if let (Some(pre), Some(post)) = (
+                        model.layers.iter().find(|l| l.id == synapse.pre_layer),
+                        model.layers.iter().find(|l| l.id == synapse.post_layer),
+                    ) {
+                        let mid_x = (pre.position.x + post.position.x) / 2.0;
+                        let mid_y = (pre.position.y + post.position.y) / 2.0;
+                        let dx = post.position.x - pre.position.x;
+                        let dy = post.position.y - pre.position.y;
+                        
+                        // Normal vector to bend the connection
+                        let nx = -dy * 0.15;
+                        let ny = dx * 0.15;
+                        let ctrl_x = mid_x + nx;
+                        let ctrl_y = mid_y + ny;
+                        
+                        let mut prev_x = pre.position.x as f64;
+                        let mut prev_y = pre.position.y as f64;
+                        
+                        for i in 1..=10 {
+                            let t = i as f64 / 10.0;
+                            let mt = 1.0 - t;
+                            let cur_x = mt * mt * pre.position.x as f64 + 2.0 * mt * t * ctrl_x as f64 + t * t * post.position.x as f64;
+                            let cur_y = mt * mt * pre.position.y as f64 + 2.0 * mt * t * ctrl_y as f64 + t * t * post.position.y as f64;
+                            
+                            ctx.draw(&CanvasLine {
+                                x1: prev_x,
+                                y1: prev_y,
+                                x2: cur_x,
+                                y2: cur_y,
+                                color: Color::DarkGray,
+                            });
+                            prev_x = cur_x;
+                            prev_y = cur_y;
+                        }
+                    }
+                }
 
-                    ui.collapsing(
-                        format!(
-                            "Synapse {} ({} -> {})",
-                            synapse.id, pre_layer_name, post_layer_name
-                        ),
-                        |ui| {
-                            ui.label(format!("Type: {}", synapse.synapse_type));
-                            ui.label(format!("Num Weights: {}", synapse.weight_stats.num_weights));
-                            ui.label(format!("Mean: {:.4}", synapse.weight_stats.mean));
-                            ui.label(format!("Std Dev: {:.4}", synapse.weight_stats.std));
-                            ui.label(format!("Min: {:.4}", synapse.weight_stats.min));
-                            ui.label(format!("Max: {:.4}", synapse.weight_stats.max));
-                        },
+                // Draw Circle Layers
+                for layer in &model.layers {
+                    let activity_ratio = if layer.size > 0 {
+                        layer.spike_count as f32 / layer.size as f32
+                    } else { 0.0 };
+
+                    let color = if self.selected_layer_id == Some(layer.id) {
+                        Color::Yellow
+                    } else if activity_ratio > 0.0 {
+                        let intensity = (232.0 + activity_ratio * 23.0) as u8;
+                        Color::Indexed(intensity)
+                    } else {
+                        Color::LightBlue
+                    };
+
+                    let radius = 10.0 + (layer.size.max(1) as f64).log10() * 5.0;
+                    ctx.draw(&Circle {
+                        x: layer.position.x as f64,
+                        y: layer.position.y as f64,
+                        radius,
+                        color,
+                    });
+                    
+                    ctx.print(
+                        layer.position.x as f64,
+                        layer.position.y as f64 - 20.0,
+                        Span::styled(layer.name.clone(), Style::default().fg(Color::White))
                     );
                 }
-            }
-        });
+            });
+
+        f.render_widget(canvas, area);
     }
 
-    fn draw_layer_details(&self, ui: &mut egui::Ui, model: &ModelStructure) {
-        ui.heading("Layer Details");
-        ui.separator();
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for layer in &model.layers {
-                ui.collapsing(&layer.name, |ui| {
-                    ui.label(format!("Type: {}", layer.layer_type));
-                    ui.label(format!("Neurons: {}", layer.size));
-                    ui.label(format!("Active: {}", layer.spike_count));
-                    let activity_ratio = if layer.size > 0 {
-                        layer.spike_count as f32 / layer.size as f32 * 100.0
-                    } else {
-                        0.0
-                    };
-                    ui.label(format!("Activity: {:.1}%", activity_ratio));
-                });
-            }
-        });
-    }
+    fn draw_details(&self, f: &mut Frame, area: Rect, model: &ModelStructure) {
+        let mut items = Vec::new();
 
-    fn draw_raster_panel(&mut self, ui: &mut egui::Ui, model: &ModelStructure) {
-        if let Ok(mut state) = self.vis_state.lock() {
-            // Update local selected_layer_id from shared state
-            self.selected_layer_id = state.selected_layer_id;
-            // Consume new epoch data if available
-            if let Some((epoch, history)) = state.epoch_spike_history.take()
-                && self.displayed_epoch != epoch
-            {
-                self.spike_history = history;
-                self.displayed_epoch = epoch;
-            }
-        }
-
-        ui.heading(format!(
-            "Spike Raster Plot (Epoch {})",
-            self.displayed_epoch
-        ));
         if let Some(layer_id) = self.selected_layer_id {
             if let Some(layer) = model.layers.iter().find(|l| l.id == layer_id) {
-                ui.label(format!(
-                    "Showing spikes for layer: '{}' ({} neurons)",
-                    layer.name, layer.size
-                ));
+                items.push(ListItem::new(format!("Selected Layer: {}", layer.name)));
+                items.push(ListItem::new(format!("Type: {}", layer.layer_type)));
+                items.push(ListItem::new(format!("Size: {} neurons", layer.size)));
+                let activity_ratio = if layer.size > 0 {
+                    layer.spike_count as f32 / layer.size as f32 * 100.0
+                } else { 0.0 };
+                items.push(ListItem::new(format!("Activity: {:.1}%", activity_ratio)));
+            }
+        } else {
+            items.push(ListItem::new("No layer selected. Use Left/Right keys targeting."));
+            items.push(ListItem::new(format!("Total Layers: {}", model.layers.len())));
+            items.push(ListItem::new(format!("Total Synapses: {}", model.synapses.len())));
+        }
 
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL).title("Details"));
+        f.render_widget(list, area);
+    }
+
+    fn draw_raster(&self, f: &mut Frame, area: Rect, model: &ModelStructure) {
+        let title = format!("Spike Raster (Epoch {})", self.displayed_epoch);
+        if let Some(layer_id) = self.selected_layer_id {
+            if let Some(layer) = model.layers.iter().find(|l| l.id == layer_id) {
                 if self.spike_history.is_empty() {
-                    ui.label("Waiting for epoch data...");
+                    let p = Paragraph::new("Waiting for epoch data...")
+                        .block(Block::default().borders(Borders::ALL).title(title));
+                    f.render_widget(p, area);
                     return;
                 }
 
-                let num_neurons = layer.size;
-                let num_timesteps = self.spike_history.len();
+                let num_neurons = layer.size as f64;
+                let num_timesteps = self.spike_history.len() as f64;
+                let mut points = Vec::new();
 
-                let mut image_data = Vec::with_capacity(num_neurons * num_timesteps * 4);
-                for n in 0..num_neurons {
-                    for t in 0..num_timesteps {
-                        let spike_val = self
-                            .spike_history
-                            .get(t)
-                            .and_then(|s| s.get(n))
-                            .cloned()
-                            .unwrap_or(0.0);
-                        let color = if spike_val > 0.0 {
-                            Color32::WHITE
-                        } else {
-                            Color32::BLACK
-                        };
-                        image_data.extend_from_slice(&color.to_array());
+                for (t, spikes) in self.spike_history.iter().enumerate() {
+                    for (n, &spike) in spikes.iter().enumerate() {
+                        if spike > 0.0 {
+                            points.push((t as f64, num_neurons - n as f64));
+                        }
                     }
                 }
-                let image = egui::ColorImage::from_rgba_unmultiplied(
-                    [num_timesteps, num_neurons],
-                    &image_data,
-                );
 
-                let texture_options = egui::TextureOptions {
-                    magnification: egui::TextureFilter::Nearest,
-                    minification: egui::TextureFilter::Nearest,
-                    ..Default::default()
-                };
+                let datasets = vec![
+                    ratatui::widgets::Dataset::default()
+                        .marker(ratatui::symbols::Marker::Dot)
+                        .graph_type(ratatui::widgets::GraphType::Scatter)
+                        .style(Style::default().fg(Color::Yellow))
+                        .data(&points)
+                ];
 
-                let texture = self.raster_texture.get_or_insert_with(|| {
-                    ui.ctx()
-                        .load_texture("raster_plot", image.clone(), texture_options)
-                });
-                texture.set(image, texture_options);
+                let x_labels = vec![Span::raw("0"), Span::raw(format!("{}", num_timesteps))];
+                let y_labels = vec![Span::raw("0"), Span::raw(format!("{}", num_neurons))];
 
-                egui::ScrollArea::both().show(ui, |ui| {
-                    let image_original_width = num_timesteps as f32;
-                    let image_original_height = num_neurons as f32;
+                let chart = ratatui::widgets::Chart::new(datasets)
+                    .block(Block::default().title(title).borders(Borders::ALL))
+                    .x_axis(ratatui::widgets::Axis::default()
+                        .bounds([0.0, num_timesteps.max(1.0)])
+                        .labels(x_labels))
+                    .y_axis(ratatui::widgets::Axis::default()
+                        .bounds([0.0, num_neurons.max(1.0)])
+                        .labels(y_labels));
 
-                    let mut displayed_width = image_original_width;
-                    let mut displayed_height = image_original_height;
-
-                    let available_panel_width = ui.available_width();
-                    let available_panel_height = ui.available_height();
-
-                    // Scale to fit available width, maintaining aspect ratio
-                    if displayed_width > available_panel_width {
-                        let scale = available_panel_width / displayed_width;
-                        displayed_width *= scale;
-                        displayed_height *= scale;
-                    }
-
-                    // Then scale to fit available height, maintaining aspect ratio
-                    if displayed_height > available_panel_height {
-                        let scale = available_panel_height / displayed_height;
-                        displayed_width *= scale;
-                        displayed_height *= scale;
-                    }
-
-                    // Ensure a minimum size for visibility if highly compressed, but avoid making it too big
-                    let min_display_height = (num_neurons as f32).min(50.0); // At least 1 pixel per neuron, or 50px
-                    if displayed_height < min_display_height && num_neurons > 0 {
-                        let current_scale = displayed_height / image_original_height;
-                        let target_scale = min_display_height / image_original_height;
-                        if target_scale > current_scale {
-                            // Only scale up if smaller than min_display_height
-                            displayed_width = image_original_width * target_scale;
-                            displayed_height = image_original_height * target_scale;
-                        }
-                    }
-
-                    let displayed_size = Vec2::new(displayed_width, displayed_height) * self.zoom;
-                    let response = ui.image((texture.id(), displayed_size));
-
-                    if response.hovered() {
-                        let scroll = ui.input(|i| i.raw_scroll_delta);
-                        if scroll.y != 0.0 {
-                            self.zoom = (self.zoom + scroll.y * 0.01 * self.zoom).max(0.1);
-                        }
-                    }
-                });
-            } else {
-                ui.label("Selected layer not found.");
+                f.render_widget(chart, area);
+                return;
             }
-        } else {
-            ui.label("Click on a layer in the network topology to display its spike raster plot.");
         }
+        
+        let p = Paragraph::new("Select a layer to view raster plot.")
+            .block(Block::default().borders(Borders::ALL).title(title));
+        f.render_widget(p, area);
     }
-}
 
-impl eframe::App for NeuralNetworkVisualizerApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.request_repaint();
-
-        let state = match self.vis_state.try_lock() {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-
-        let mut model_structure = state.model_structure.clone();
-        let runtime_stats = state.runtime_stats.clone();
-        let should_close = state.should_close;
-        let total_epochs = state.total_epochs;
-        let is_paused = state.is_paused;
-        let selected_layer_id = state.selected_layer_id;
-
-        drop(state);
-
-        if should_close {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    fn draw_rewards(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
+        let history = &state.epoch_rewards;
+        if history.is_empty() {
+            let p = Paragraph::new("No reward data yet.")
+                .block(Block::default().borders(Borders::ALL).title("Reward History"));
+            f.render_widget(p, area);
             return;
         }
 
-        egui::TopBottomPanel::top("stats_panel").show(ctx, |ui| {
-            self.draw_stats_panel(ui, &runtime_stats, total_epochs, is_paused);
-        });
-
-        if selected_layer_id.is_some() {
-            egui::TopBottomPanel::bottom("raster_panel")
-                .min_height(150.0)
-                .max_height(400.0)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    self.draw_raster_panel(ui, &model_structure);
-                });
+        let max_epoch = history.iter().map(|(e, _)| *e).max().unwrap_or(0) as f64;
+        let mut min_r = f32::MAX;
+        let mut max_r = f32::MIN;
+        let mut points = Vec::new();
+        for &(e, r) in history.iter() {
+            min_r = min_r.min(r);
+            max_r = max_r.max(r);
+            points.push((e as f64, r as f64));
         }
 
-        egui::SidePanel::right("details_panel")
-            .min_width(200.0)
-            .show(ctx, |ui| {
-                if let Ok(state) = self.vis_state.try_lock() {
-                    if let Some(env_state) = &state.environment_state {
-                        ui.heading("Environment State");
-                        ui.separator();
+        let datasets = vec![
+            ratatui::widgets::Dataset::default()
+                .marker(ratatui::symbols::Marker::Braille)
+                .graph_type(ratatui::widgets::GraphType::Line)
+                .style(Style::default().fg(Color::Cyan))
+                .data(&points)
+        ];
 
-                        let (response, painter) =
-                            ui.allocate_painter(Vec2::new(180.0, 180.0), egui::Sense::hover());
-                        let rect = response.rect;
+        let chart = ratatui::widgets::Chart::new(datasets)
+            .block(Block::default().title("Reward History").borders(Borders::ALL))
+            .x_axis(ratatui::widgets::Axis::default()
+                .title("Epoch")
+                .bounds([0.0, max_epoch.max(1.0)])
+                .labels(vec![Span::raw("0"), Span::raw(format!("{}", max_epoch))]))
+            .y_axis(ratatui::widgets::Axis::default()
+                .title("Reward")
+                .bounds([min_r.min(0.0) as f64, max_r.max(0.1) as f64])
+                .labels(vec![Span::raw(format!("{:.1}", min_r)), Span::raw(format!("{:.1}", max_r))]));
 
-                        if env_state.len() == 4 {
-                            // Grid visualization
-                            let px = (env_state[0] + env_state[2]) as f32;
-                            let py = (env_state[1] + env_state[3]) as f32;
-                            let gx = env_state[2] as f32;
-                            let gy = env_state[3] as f32;
+        f.render_widget(chart, area);
+    }
 
-                            // Draw grid
-                            let grid_size = 50.0;
-                            let cell_w = rect.width() / grid_size;
-                            let cell_h = rect.height() / grid_size;
-
-                            painter.rect_filled(rect, 0.0, Color32::from_gray(30));
-
-                            // Draw goal
-                            let goal_rect = Rect::from_min_size(
-                                rect.min + Vec2::new(gx * cell_w, gy * cell_h),
-                                Vec2::new(cell_w, cell_h),
-                            );
-                            painter.rect_filled(goal_rect, 0.0, Color32::GREEN);
-
-                            // Draw player
-                            let player_rect = Rect::from_min_size(
-                                rect.min + Vec2::new(px * cell_w, py * cell_h),
-                                Vec2::new(cell_w, cell_h),
-                            );
-                            painter.rect_filled(player_rect, 0.0, Color32::WHITE);
-
-                            ui.label(format!("Player: ({}, {})", px, py));
-                            ui.label(format!("Goal: ({}, {})", gx, gy));
-                        } else if env_state.len() == 6 {
-                            // Robot arm visualization (moving bars)
-                            painter.rect_filled(rect, 0.0, Color32::from_gray(30));
-
-                            for (i, &joint_pos) in env_state.iter().enumerate() {
-                                let bar_y = rect.min.y + 10.0 + i as f32 * 25.0;
-                                let bar_w = rect.width() - 20.0;
-
-                                // Background bar
-                                painter.rect_filled(
-                                    Rect::from_min_size(
-                                        Pos2::new(rect.min.x + 10.0, bar_y),
-                                        Vec2::new(bar_w, 15.0),
-                                    ),
-                                    0.0,
-                                    Color32::from_gray(60),
-                                );
-
-                                // Normalize joint position to 0-1 (approximate boundaries -3 to 3 radians)
-                                let normalized_pos =
-                                    ((joint_pos as f32 + 3.0) / 6.0).clamp(0.0, 1.0);
-
-                                // Fill bar
-                                painter.rect_filled(
-                                    Rect::from_min_size(
-                                        Pos2::new(rect.min.x + 10.0, bar_y),
-                                        Vec2::new(bar_w * normalized_pos, 15.0),
-                                    ),
-                                    0.0,
-                                    Color32::from_rgb(100, 150, 250),
-                                );
-
-                                painter.text(
-                                    Pos2::new(rect.min.x + 15.0, bar_y + 1.0),
-                                    egui::Align2::LEFT_TOP,
-                                    format!("Joint {}: {:.2}", i, joint_pos),
-                                    egui::FontId::proportional(10.0),
-                                    Color32::WHITE,
-                                );
-                            }
-                        } else {
-                            // Generic raw float display
-                            ui.label(format!("Generic Env State (dim {}):", env_state.len()));
-                            for (i, val) in env_state.iter().enumerate() {
-                                ui.label(format!("{}: {:.3}", i, val));
-                            }
-                        }
-
-                        ui.add_space(10.0);
-                        ui.separator();
-                    }
-
-                    if !state.epoch_rewards.is_empty() {
-                        ui.heading("Reward History");
-                        ui.separator();
-
-                        let (response, painter) =
-                            ui.allocate_painter(Vec2::new(180.0, 100.0), egui::Sense::hover());
-                        let rect = response.rect;
-
-                        painter.rect_filled(rect, 0.0, Color32::from_gray(30));
-
-                        let rewards = &state.epoch_rewards;
-
-                        let min_reward = rewards
-                            .iter()
-                            .map(|(_, r)| *r)
-                            .fold(f32::INFINITY, f32::min);
-                        let max_reward = rewards
-                            .iter()
-                            .map(|(_, r)| *r)
-                            .fold(f32::NEG_INFINITY, f32::max);
-
-                        let range = (max_reward - min_reward).max(0.1);
-                        let min_y = min_reward - range * 0.1;
-                        let max_y = max_reward + range * 0.1;
-                        let val_range = max_y - min_y;
-
-                        let max_x = rewards.last().unwrap().0 as f32;
-                        let min_x = rewards.first().unwrap().0 as f32;
-                        let x_range = (max_x - min_x).max(1.0);
-
-                        let mut points = Vec::new();
-                        for &(epoch, reward) in rewards {
-                            let norm_x = (epoch as f32 - min_x) / x_range;
-                            let norm_y = 1.0 - (reward - min_y) / val_range;
-
-                            points.push(Pos2::new(
-                                rect.min.x + norm_x * rect.width(),
-                                rect.min.y + norm_y * rect.height(),
-                            ));
-                        }
-
-                        if points.len() > 1 {
-                            let mut prev = points[0];
-                            for &curr in points.iter().skip(1) {
-                                painter.line_segment(
-                                    [prev, curr],
-                                    Stroke::new(1.5, Color32::from_rgb(100, 250, 100)),
-                                );
-                                prev = curr;
-                            }
-                        } else if points.len() == 1 {
-                            painter.circle_filled(points[0], 2.0, Color32::from_rgb(100, 250, 100));
-                        }
-
-                        let latest_reward = rewards.last().unwrap().1;
-                        ui.label(format!("Latest Reward: {:.1}", latest_reward));
-
-                        ui.add_space(10.0);
-                        ui.separator();
-                    }
-                }
-
-                self.draw_layer_details(ui, &model_structure);
-                ui.add_space(10.0);
-                ui.separator();
-                self.draw_synapse_details(ui, &model_structure);
-            });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Network Topology");
-            ui.separator();
-            self.draw_network(ui, &mut model_structure);
-        });
-
-        if let Ok(mut state) = self.vis_state.try_lock() {
-            for layer in &model_structure.layers {
-                if let Some(state_layer) = state
-                    .model_structure
-                    .layers
-                    .iter_mut()
-                    .find(|l| l.id == layer.id)
-                {
-                    state_layer.position = layer.position;
+    fn draw_logs(&mut self, f: &mut Frame, area: Rect) {
+        let logs = if let Ok(logs_guard) = super::GLOBAL_LOGS.lock() {
+            logs_guard.iter().map(|l| ListItem::new(l.clone())).collect::<Vec<_>>()
+        } else { vec![] };
+        
+        let total_logs = logs.len();
+        
+        // Auto scroll to latest if user hasn't explicitly scrolled backwards
+        if !self.user_scrolled || self.log_state.selected().is_none() {
+            if total_logs > 0 {
+                self.log_state.select(Some(total_logs - 1));
+            }
+        } else {
+            // Keep bounds in check if they delete themselves
+            if let Some(idx) = self.log_state.selected() {
+                if idx >= total_logs && total_logs > 0 {
+                    self.log_state.select(Some(total_logs - 1));
                 }
             }
-            // Update local selected_layer_id from shared state
-            self.selected_layer_id = state.selected_layer_id;
+            // If they reach bottom, reset user_scrolled state to allow auto-scrolling
+            if let Some(idx) = self.log_state.selected() {
+                if total_logs > 0 && idx == total_logs - 1 {
+                    self.user_scrolled = false;
+                }
+            }
         }
+        
+        let list = List::new(logs)
+            .block(Block::default().title("Execution Logs (Scroll with up/down arrows or mouse)").borders(Borders::ALL))
+            .highlight_style(Style::default().bg(Color::DarkGray));
+            
+        f.render_stateful_widget(list, area, &mut self.log_state);
     }
+
+    fn draw_help(&self, f: &mut Frame, screen_area: Rect) {
+        let area = centered_rect(50, 50, screen_area);
+        let help_text = vec![
+            Line::from(Span::styled("Keyboard Shortcuts", Style::default().add_modifier(Modifier::BOLD))),
+            Line::from(""),
+            Line::from("  ?       Toggle this help menu"),
+            Line::from("  q/Esc   Quit application"),
+            Line::from("  p       Pause/Resume Training"),
+            Line::from("  s       Save Model Checkpoint"),
+            Line::from("  l       Load Local Checkpoint"),
+            Line::from("  <-/->   Select / Cycle Layer"),
+            Line::from("  Up/Down Scroll Execution Logs"),
+        ];
+
+        let p = Paragraph::new(help_text)
+            .block(Block::default().borders(Borders::ALL).title("Help"))
+            .alignment(Alignment::Left);
+        
+        f.render_widget(ratatui::widgets::Clear, area);
+        f.render_widget(p, area);
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }

@@ -72,7 +72,7 @@ impl Algorithm for AlgorithmFFSAC {
                     break;
                 }
             }
-            println!("starting vectorized episode {} (x{})", episode, n_envs);
+            log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -265,13 +265,13 @@ impl Algorithm for AlgorithmFFSAC {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {} Tracking Env Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
                 episode, raw_rewards.iter().sum::<f64>(), inf_aps, ep_s, self.buffer.len()
             );
         }
 
-        println!("Training completed.");
+        log::info!("Training completed.");
         if let Some(ref vis_state_arc) = vis_state {
             if let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");

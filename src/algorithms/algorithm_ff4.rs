@@ -65,7 +65,7 @@ impl Algorithm for AlgorithmFF4 {
         }
 
         for episode in 1..=self.n_episodes {
-            println!("starting vectorized episode {} (x{})", episode, n_envs);
+            log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -111,7 +111,7 @@ impl Algorithm for AlgorithmFF4 {
 
                     if episode % 10 == 0 && _step == 0 && env_idx == 0 {
                         let chunk = &goodness_scores[0..action_size];
-                        println!("Ep {} Step 0 | Goodness Scores: {:.4?}", episode, chunk);
+                        log::info!("Ep {} Step 0 | Goodness Scores: {:.4?}", episode, chunk);
                     }
 
                     let max_g = chunk_scores
@@ -192,7 +192,7 @@ impl Algorithm for AlgorithmFF4 {
                 }
             }
 
-            println!("Training phase: Temporal Contrastive RL");
+            log::info!("Training phase: Temporal Contrastive RL");
 
             let gamma = 0.99f32;
 
@@ -209,7 +209,7 @@ impl Algorithm for AlgorithmFF4 {
             }
 
             if self.buffer.len() > 200000 {
-                println!("Draining replay buffer...");
+                log::info!("Draining replay buffer...");
                 let drain_count = self.buffer.len() - 200000;
                 self.buffer.drain(0..drain_count);
             }
@@ -267,7 +267,7 @@ impl Algorithm for AlgorithmFF4 {
             } else {
                 0.0
             };
-            println!(
+            log::info!(
                 "[Episode {} Tracking Env Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
                 episode,
                 raw_rewards.iter().sum::<f64>(),
@@ -277,7 +277,7 @@ impl Algorithm for AlgorithmFF4 {
             );
         }
 
-        println!("Training completed.");
+        log::info!("Training completed.");
         if let Some(ref vis_state_arc) = vis_state {
             if let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");
