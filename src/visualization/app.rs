@@ -144,6 +144,16 @@ impl NeuralNetworkVisualizerApp {
                     KeyCode::Char('?') => {
                         self.show_help = !self.show_help;
                     }
+                    KeyCode::Char(']') => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.delay_ms = std::cmp::min(state.delay_ms + 10, 500);
+                        }
+                    }
+                    KeyCode::Char('[') => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.delay_ms = state.delay_ms.saturating_sub(10);
+                        }
+                    }
                     KeyCode::Tab => {
                         self.active_tab = (self.active_tab + 1) % 3;
                     }
@@ -336,12 +346,16 @@ impl NeuralNetworkVisualizerApp {
                 let gy = env_state[3];
                 let grid_size = 50.0;
                 
+                let cloned_trail = state.render_trail.clone();
                 let canvas = Canvas::default()
                     .block(Block::default().borders(Borders::ALL).title("Env: Grid 50x50 (Yellow=Player, Green=Goal)"))
                     .marker(ratatui::symbols::Marker::HalfBlock)
                     .x_bounds([0.0, grid_size])
                     .y_bounds([0.0, grid_size])
                     .paint(move |ctx| {
+                        for (tx, ty) in cloned_trail.iter() {
+                            ctx.draw(&Points { coords: &[(*tx, grid_size - *ty)], color: Color::DarkGray });
+                        }
                         ctx.draw(&Points { coords: &[(gx as f64, grid_size - gy as f64)], color: Color::Green });
                         ctx.draw(&Points { coords: &[(px as f64, grid_size - py as f64)], color: Color::Yellow });
                     });
@@ -364,12 +378,13 @@ impl NeuralNetworkVisualizerApp {
 
     fn draw_header(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
         let text = format!(
-            "Epoch: {}/{} | Iter: {} | Speed: {:.1} it/s | State: {} | Press '?' for Help",
+            "Epoch: {}/{} | Iter: {} | Speed: {:.1} it/s | State: {} | Delay: {}ms | Press '?' for Help",
             state.runtime_stats.epoch,
             state.total_epochs,
             state.runtime_stats.iteration,
             state.runtime_stats.iterations_per_second,
-            if state.is_paused { "PAUSED" } else { "RUNNING" }
+            if state.is_paused { "PAUSED" } else { "RUNNING" },
+            state.delay_ms
         );
 
         let progress = if state.total_epochs > 0 {
@@ -626,6 +641,7 @@ impl NeuralNetworkVisualizerApp {
             Line::from("  ?       Toggle this help menu"),
             Line::from("  q   Quit application"),
             Line::from("  p       Pause/Resume Training"),
+            Line::from("  [/]     Decrease/Increase Simulation Throttling Delay"),
             Line::from("  s       Save Model Checkpoint"),
             Line::from("  l       Load Local Checkpoint"),
             Line::from("  <-/->   Select / Cycle Layer"),

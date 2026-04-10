@@ -204,14 +204,17 @@ impl Algorithm for Algorithm3 {
             for step in 0..self.n_steps_per_episode {
                 if let Some(ref vis_state_arc) = vis_state {
                     loop {
-                        let (is_paused, should_close) = vis_state_arc
+                        let (is_paused, should_close, delay) = vis_state_arc
                             .try_lock()
-                            .map(|state| (state.is_paused, state.should_close))
-                            .unwrap_or((false, false));
+                            .map(|state| (state.is_paused, state.should_close, state.delay_ms))
+                            .unwrap_or((false, false, 0));
                         if should_close {
                             return Ok(());
                         }
                         if !is_paused {
+                            if delay > 0 {
+                                std::thread::sleep(std::time::Duration::from_millis(delay));
+                            }
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -365,6 +368,12 @@ impl Algorithm for Algorithm3 {
                 if let Some(ref vis_state_arc) = vis_state {
                     if let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = env.get_state()?;
+                        if state.runtime_stats.epoch != episode {
+                            state.render_trail.clear();
+                        }
+                        if env_state.len() == 4 {
+                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                        }
                         state.environment_state = Some(env_state);
 
                         if !spike_history.is_empty() {
