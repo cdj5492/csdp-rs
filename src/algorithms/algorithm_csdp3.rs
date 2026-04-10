@@ -193,7 +193,7 @@ impl Algorithm for Algorithm3 {
         for episode in 1..=self.n_episodes {
             if let Some(ref vis_state_arc) = vis_state {
                 if vis_state_arc.try_lock().map(|s| s.should_close).unwrap_or(false) {
-                    break;
+                    return Ok(());
                 }
             }
             log::info!("starting episode {}", episode);
@@ -202,6 +202,22 @@ impl Algorithm for Algorithm3 {
             let mut total_reward = 0.0;
 
             for step in 0..self.n_steps_per_episode {
+                if let Some(ref vis_state_arc) = vis_state {
+                    loop {
+                        let (is_paused, should_close) = vis_state_arc
+                            .try_lock()
+                            .map(|state| (state.is_paused, state.should_close))
+                            .unwrap_or((false, false));
+                        if should_close {
+                            return Ok(());
+                        }
+                        if !is_paused {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                }
+                
                 total_iteration += 1;
                 let current_state = env.get_state()?;
                 let state_raw_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();

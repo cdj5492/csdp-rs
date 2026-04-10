@@ -139,8 +139,7 @@ impl Algorithm for Algorithm1 {
                             .map(|state| (state.is_paused, state.should_close))
                             .unwrap_or((false, false));
                         if should_close {
-                            should_break = true;
-                            break;
+                            return Ok(());
                         }
                         if !is_paused {
                             break;

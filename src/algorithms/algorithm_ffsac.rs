@@ -69,7 +69,7 @@ impl Algorithm for AlgorithmFFSAC {
         for episode in 1..=self.n_episodes {
             if let Some(ref vis_state_arc) = vis_state {
                 if vis_state_arc.try_lock().map(|s| s.should_close).unwrap_or(false) {
-                    break;
+                    return Ok(());
                 }
             }
             log::info!("starting vectorized episode {} (x{})", episode, n_envs);
@@ -84,6 +84,22 @@ impl Algorithm for AlgorithmFFSAC {
             let mut rng = rand::thread_rng();
 
             for _step in 0..self.n_steps_per_episode {
+                if let Some(ref vis_state_arc) = vis_state {
+                    loop {
+                        let (is_paused, should_close) = vis_state_arc
+                            .try_lock()
+                            .map(|state| (state.is_paused, state.should_close))
+                            .unwrap_or((false, false));
+                        if should_close {
+                            return Ok(());
+                        }
+                        if !is_paused {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                    }
+                }
+                
                 let mut current_states = Vec::new();
                 for e in envs.iter_mut() {
                     current_states.push(e.get_state()?);

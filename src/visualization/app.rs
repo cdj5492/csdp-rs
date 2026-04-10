@@ -116,7 +116,7 @@ impl NeuralNetworkVisualizerApp {
         match event {
             Event::Key(key) => {
                 match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => {
+                    KeyCode::Char('q') => {
                         if let Ok(mut state) = self.vis_state.lock() {
                             state.should_close = true;
                         }
@@ -137,6 +137,9 @@ impl NeuralNetworkVisualizerApp {
                         if let Ok(mut state) = self.vis_state.lock() {
                             state.load_requested = true;
                         }
+                    }
+                    KeyCode::Esc => {
+                        self.show_help = false;
                     }
                     KeyCode::Char('?') => {
                         self.show_help = !self.show_help;
@@ -621,7 +624,7 @@ impl NeuralNetworkVisualizerApp {
             Line::from(Span::styled("Keyboard Shortcuts", Style::default().add_modifier(Modifier::BOLD))),
             Line::from(""),
             Line::from("  ?       Toggle this help menu"),
-            Line::from("  q/Esc   Quit application"),
+            Line::from("  q   Quit application"),
             Line::from("  p       Pause/Resume Training"),
             Line::from("  s       Save Model Checkpoint"),
             Line::from("  l       Load Local Checkpoint"),
