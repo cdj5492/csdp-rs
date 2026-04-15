@@ -5,12 +5,37 @@ use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
 use rand::seq::SliceRandom;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// Number of discrete return classes the model predicts.
 const NUM_RETURN_CLASSES: usize = 50;
+
+/// How often (in episodes) to auto-save a checkpoint.
+const AUTO_SAVE_INTERVAL: usize = 25;
+
+/// Default checkpoint directory for this algorithm.
+const CHECKPOINT_DIR: &str = "checkpoints/ff_multi2";
+
+// ─────────────────────────────────────────────────────────────
+// Checkpoint Metadata
+// ─────────────────────────────────────────────────────────────
+
+/// Everything that needs to be persisted *besides* the model weights
+/// (which go into safetensors files via `FFMultiModel::save`).
+#[derive(Serialize, Deserialize)]
+struct TrainingState {
+    /// Replay buffer entries: (normalised_state, action_id, reward, normalised_next_state).
+    buffer: Vec<(Vec<f32>, usize, f32, Vec<f32>)>,
+    min_return: f32,
+    max_return: f32,
+    /// The last completed episode number, so we can resume from episode+1.
+    completed_episode: usize,
+    /// Epoch reward history for the training graph.
+    epoch_rewards: Vec<(usize, f32)>,
+}
 
 // ─────────────────────────────────────────────────────────────
 // Dynamic Class Mapper
@@ -79,6 +104,8 @@ pub struct AlgorithmFFMulti2 {
     pub min_return: f32,
     pub max_return: f32,
     pub target_sync_interval: usize,
+    /// Episode number to start from (0 = fresh run, >0 = resumed).
+    pub start_episode: usize,
 }
 
 impl AlgorithmFFMulti2 {
@@ -123,7 +150,82 @@ impl AlgorithmFFMulti2 {
             min_return: 0.0,
             max_return: 0.0,
             target_sync_interval: 10, // sync every N episodes
+            start_episode: 0,
         })
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Checkpoint Save / Load
+    // ─────────────────────────────────────────────────────────
+
+    /// Save a full checkpoint: model weights (safetensors) + training metadata (JSON).
+    pub fn save_checkpoint(
+        &self,
+        dir: &std::path::Path,
+        completed_episode: usize,
+        epoch_rewards: &[(usize, f32)],
+    ) -> Result<(), Box<dyn Error>> {
+        std::fs::create_dir_all(dir)?;
+
+        // 1. Save model weights.
+        let main_dir = dir.join("main_model");
+        self.main_model.save(&main_dir)?;
+        let target_dir = dir.join("target_model");
+        self.target_model.save(&target_dir)?;
+
+        // 2. Save training metadata as JSON.
+        let state = TrainingState {
+            buffer: self.buffer.clone(),
+            min_return: self.min_return,
+            max_return: self.max_return,
+            completed_episode,
+            epoch_rewards: epoch_rewards.to_vec(),
+        };
+        let json = serde_json::to_string(&state)?;
+        std::fs::write(dir.join("training_state.json"), json)?;
+
+        log::info!(
+            "Checkpoint saved to {:?} (episode {}, buffer size {}, rewards history {})",
+            dir,
+            completed_episode,
+            self.buffer.len(),
+            epoch_rewards.len(),
+        );
+        Ok(())
+    }
+
+    /// Load a checkpoint, restoring model weights and all training state.
+    /// Returns the epoch_rewards history so the caller can feed it to the
+    /// visualisation state.
+    pub fn load_checkpoint(
+        &mut self,
+        dir: &std::path::Path,
+    ) -> Result<Vec<(usize, f32)>, Box<dyn Error>> {
+        // 1. Load model weights.
+        let main_dir = dir.join("main_model");
+        self.main_model.load(&main_dir)?;
+        let target_dir = dir.join("target_model");
+        self.target_model.load(&target_dir)?;
+
+        // 2. Load metadata.
+        let json = std::fs::read_to_string(dir.join("training_state.json"))?;
+        let state: TrainingState = serde_json::from_str(&json)?;
+
+        self.buffer = state.buffer;
+        self.min_return = state.min_return;
+        self.max_return = state.max_return;
+        self.start_episode = state.completed_episode;
+
+        log::info!(
+            "Checkpoint loaded from {:?} (resuming after episode {}, buffer size {}, return range [{:.4}, {:.4}])",
+            dir,
+            state.completed_episode,
+            self.buffer.len(),
+            self.min_return,
+            self.max_return,
+        );
+
+        Ok(state.epoch_rewards)
     }
 }
 
@@ -156,7 +258,13 @@ impl Algorithm for AlgorithmFFMulti2 {
         let gamma = 0.99f32;
         let tau = 0.07f32; // Boltzmann temperature for action selection
 
-        for episode in 1..=self.n_episodes {
+        let checkpoint_dir = std::path::Path::new(CHECKPOINT_DIR);
+
+        // Episode range: if resuming, start after the last completed episode.
+        let episode_start = self.start_episode + 1;
+        let episode_end = self.start_episode + self.n_episodes;
+
+        for episode in episode_start..=episode_end {
             // ── early-exit on close ──
             if let Some(ref vs) = vis_state {
                 if vs.try_lock().map(|s| s.should_close).unwrap_or(false) {
@@ -328,7 +436,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                         / (n_envs as f32 * self.n_steps_per_episode as f32);
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
-                    state.total_epochs = self.n_episodes;
+                    state.total_epochs = episode_end;
                 }
             }
 
@@ -471,6 +579,61 @@ impl Algorithm for AlgorithmFFMulti2 {
                 sync_target_from_main(&self.main_model, &self.target_model)?;
             }
 
+            // ═══════════════════════════════════════════════════
+            // Checkpointing
+            // ═══════════════════════════════════════════════════
+
+            // ── Manual save/load via visualisation UI ──
+            if let Some(ref vs) = vis_state {
+                if let Ok(mut state) = vs.try_lock() {
+                    if state.save_requested {
+                        log::info!("Manual save requested...");
+                        let epoch_rewards = state.epoch_rewards.clone();
+                        // Drop the lock before doing I/O.
+                        state.save_requested = false;
+                        drop(state);
+                        if let Err(e) = self.save_checkpoint(
+                            checkpoint_dir,
+                            episode,
+                            &epoch_rewards,
+                        ) {
+                            log::error!("Manual save failed: {}", e);
+                        }
+                    } else if state.load_requested {
+                        log::info!("Manual load requested...");
+                        state.load_requested = false;
+                        drop(state);
+                        match self.load_checkpoint(checkpoint_dir) {
+                            Ok(epoch_rewards) => {
+                                // Push restored rewards into vis state.
+                                if let Some(ref vs2) = vis_state {
+                                    if let Ok(mut s) = vs2.try_lock() {
+                                        s.epoch_rewards = epoch_rewards;
+                                    }
+                                }
+                                // Re-sync target model after loading.
+                                sync_target_from_main(&self.main_model, &self.target_model)?;
+                                log::info!("Manual load succeeded. Continuing training.");
+                            }
+                            Err(e) => {
+                                log::error!("Manual load failed: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Periodic auto-save ──
+            if episode % AUTO_SAVE_INTERVAL == 0 {
+                let epoch_rewards = vis_state
+                    .as_ref()
+                    .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
+                    .unwrap_or_default();
+                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards) {
+                    log::error!("Auto-save failed at episode {}: {}", episode, e);
+                }
+            }
+
             // ── Logging ──
             let inf_aps = if total_inference_time.as_secs_f32() > 0.0 {
                 total_inference_actions as f32 / total_inference_time.as_secs_f32()
@@ -494,14 +657,21 @@ impl Algorithm for AlgorithmFFMulti2 {
             );
         }
 
-        log::info!("Training completed.");
+        // ═══════════════════════════════════════════════════
+        // Final save on completion
+        // ═══════════════════════════════════════════════════
+        log::info!("Training completed. Saving final checkpoint...");
+        let epoch_rewards = vis_state
+            .as_ref()
+            .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
+            .unwrap_or_default();
+        if let Err(e) = self.save_checkpoint(checkpoint_dir, episode_end, &epoch_rewards) {
+            log::error!("Final save failed: {}", e);
+        }
+
         if let Some(ref vs) = vis_state {
             if let Ok(state) = vs.try_lock() {
-                let checkpoints_dir = std::path::Path::new("checkpoints");
-                if !checkpoints_dir.exists() {
-                    let _ = std::fs::create_dir_all(checkpoints_dir);
-                }
-                let csv_path = checkpoints_dir.join("epoch_rewards.csv");
+                let csv_path = std::path::Path::new(CHECKPOINT_DIR).join("epoch_rewards.csv");
                 let _ = state.save_graphs_to_csv(&csv_path);
             }
         }

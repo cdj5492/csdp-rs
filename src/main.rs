@@ -51,7 +51,7 @@ impl log::Log for VisLogger {
 }
 static LOGGER: VisLogger = VisLogger;
 
-fn parse_args() -> (bool, String, String, bool) {
+fn parse_args() -> (bool, String, String, bool, bool) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
 
@@ -63,6 +63,7 @@ fn parse_args() -> (bool, String, String, bool) {
     }
 
     let infinite_epochs = args.contains(&"--infinite-epochs".to_string());
+    let resume = args.contains(&"--resume".to_string());
 
     let mut algo = "csdp2".to_string();
     if let Some(idx) = args.iter().position(|r| r == "--algo") {
@@ -71,14 +72,14 @@ fn parse_args() -> (bool, String, String, bool) {
         }
     }
 
-    (visualize, env_type, algo, infinite_epochs)
+    (visualize, env_type, algo, infinite_epochs, resume)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     // let device = Device::Cpu;
     let device = Device::new_cuda(0)?;
 
-    let (visualize, env_type, algo_choice, infinite_epochs) = parse_args();
+    let (visualize, env_type, algo_choice, infinite_epochs, resume) = parse_args();
 
     if visualize {
         let _ = log::set_logger(&LOGGER);
@@ -311,13 +312,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
+        // Resume from checkpoint if --resume and a checkpoint exists.
+        let mut restored_rewards = None;
+        if resume {
+            let cp_dir = std::path::Path::new("checkpoints/ff_multi2");
+            if cp_dir.join("training_state.json").exists() {
+                match algo.load_checkpoint(cp_dir) {
+                    Ok(rewards) => {
+                        log::info!("Resumed from checkpoint (episode {})", algo.start_episode);
+                        restored_rewards = Some(rewards);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load checkpoint: {}. Starting fresh.", e);
+                    }
+                }
+            } else {
+                log::info!("No checkpoint found at {:?}. Starting fresh.", cp_dir);
+            }
+        }
         let snap = Err(candle_core::Error::Msg(
             "FF Model has no visualization".to_string(),
         ));
         let eps = algo.n_episodes;
         let layers = algo.main_model.layers.len();
         let syns = 0;
-        algo_ff_multi2_opt = Some(algo);
+        algo_ff_multi2_opt = Some((algo, restored_rewards));
         (eps, snap, layers, syns)
     } else {
         panic!("Unknown algorithm choice: {}", algo_choice);
@@ -371,7 +390,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ff_multi1_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
-    } else if let Some(mut algo) = algo_ff_multi2_opt {
+    } else if let Some((mut algo, restored_rewards)) = algo_ff_multi2_opt {
+        // If we resumed from a checkpoint, inject the restored reward history
+        // into the visualization state so the graph picks up where it left off.
+        if let Some(rewards) = restored_rewards {
+            if let Some(ref vs) = vis_state_arg {
+                if let Ok(mut state) = vs.lock() {
+                    state.epoch_rewards = rewards;
+                }
+            }
+        }
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     }
 

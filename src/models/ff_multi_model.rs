@@ -229,4 +229,33 @@ impl FFMultiModel {
 
         Ok(best_indices)
     }
+
+    /// Save all layer weights to safetensors files inside `dir`.
+    /// Creates one file per layer: `layer_0.safetensors`, `layer_1.safetensors`, etc.
+    pub fn save<P: AsRef<std::path::Path>>(&self, dir: P) -> CandleResult<()> {
+        let dir = dir.as_ref();
+        std::fs::create_dir_all(dir).map_err(|e| candle_core::Error::Msg(format!("mkdir: {}", e)))?;
+        for (i, vm) in self.varmaps.iter().enumerate() {
+            let path = dir.join(format!("layer_{}.safetensors", i));
+            vm.save(&path)?;
+        }
+        Ok(())
+    }
+
+    /// Load all layer weights from safetensors files inside `dir`.
+    /// Expects the same number of files as there are layers.
+    pub fn load<P: AsRef<std::path::Path>>(&mut self, dir: P) -> CandleResult<()> {
+        let dir = dir.as_ref();
+        for (i, vm) in self.varmaps.iter_mut().enumerate() {
+            let path = dir.join(format!("layer_{}.safetensors", i));
+            if path.exists() {
+                vm.load(&path)?;
+            } else {
+                return Err(candle_core::Error::Msg(format!(
+                    "Missing weight file: {:?}", path
+                )));
+            }
+        }
+        Ok(())
+    }
 }

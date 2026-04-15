@@ -792,6 +792,7 @@ dependencies = [
  "rocketsim_rs",
  "rustypot",
  "serde",
+ "serde_json",
  "serialport",
  "tqdm",
 ]
