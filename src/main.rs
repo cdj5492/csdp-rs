@@ -20,6 +20,7 @@ use algorithms::algorithm_csdp1::Algorithm1;
 use algorithms::algorithm_csdp2::Algorithm2;
 use algorithms::algorithm_csdp3::Algorithm3;
 use algorithms::algorithm_csdp4::Algorithm4;
+use algorithms::algorithm_csdp5::AlgorithmCSDP5;
 use algorithms::algorithm_ff_multi1::AlgorithmFFMulti1;
 use algorithms::algorithm_ff_multi2::AlgorithmFFMulti2;
 use algorithms::algorithm_ff1::AlgorithmFF1;
@@ -125,6 +126,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo2_opt = None;
     let mut algo3_opt = None;
     let mut algo4_opt = None;
+    let mut algo5_opt = None;
     let mut algo_ff1_opt = None;
     let mut algo_ff2_opt = None;
     let mut algo_ff3_opt = None;
@@ -212,6 +214,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         let layers = algo.model.layers.len();
         let syns = algo.model.synapses.len();
         algo4_opt = Some(algo);
+        (eps, snap, layers, syns)
+    } else if algo_choice == "csdp5" {
+        log::info!("Using Algorithm CSDP5 (Multi-Class MC SNN)");
+        let mut algo = AlgorithmCSDP5::new(
+            state_size,
+            action_size,
+            vec![2000],
+            dt,
+            device.clone(),
+            state_bounds.clone(),
+        )
+        .expect("Failed to create AlgorithmCSDP5");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let snap = algo.model.get_visualization_snapshot();
+        let eps = algo.n_episodes;
+        let layers = algo.model.layers.len();
+        let syns = algo.model.synapses.len();
+        algo5_opt = Some(algo);
         (eps, snap, layers, syns)
     } else if algo_choice == "ff1" {
         log::info!("Using Algorithm FF1 (FF Model - State/Action Iterator)");
@@ -377,6 +399,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if let Some(mut algo) = algo3_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo4_opt {
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some(mut algo) = algo5_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ff1_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;

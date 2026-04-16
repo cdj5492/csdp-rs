@@ -1,5 +1,6 @@
 pub mod reward_modulated;
 pub mod standard;
+pub mod multi_class;
 
 use candle_core::{Result as CandleResult, Tensor};
 
