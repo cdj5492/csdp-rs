@@ -19,6 +19,16 @@ const AUTO_SAVE_INTERVAL: usize = 25;
 /// Default checkpoint directory for this algorithm.
 const CHECKPOINT_DIR: &str = "checkpoints/ff_multi2";
 
+/// EMA smoothing factor for return bounds (0 = never update, 1 = jump instantly).
+const BOUNDS_EMA_ALPHA: f32 = 0.1;
+
+/// Minimum allowed range for return bounds to prevent degenerate class resolution.
+const MIN_RETURN_RANGE: f32 = 2.0;
+
+/// Percentile indices used for bounds estimation (e.g., 5th and 95th).
+const BOUNDS_LOW_PERCENTILE: f32 = 0.05;
+const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
+
 // ─────────────────────────────────────────────────────────────
 // Checkpoint Metadata
 // ─────────────────────────────────────────────────────────────
@@ -31,6 +41,7 @@ struct TrainingState {
     buffer: Vec<(Vec<f32>, usize, f32, Vec<f32>)>,
     min_return: f32,
     max_return: f32,
+    bounds_initialized: bool,
     /// The last completed episode number, so we can resume from episode+1.
     completed_episode: usize,
     /// Epoch reward history for the training graph.
@@ -103,6 +114,8 @@ pub struct AlgorithmFFMulti2 {
     pub num_classes: usize,
     pub min_return: f32,
     pub max_return: f32,
+    /// Whether min/max return have been initialized from real data.
+    pub bounds_initialized: bool,
     pub target_sync_interval: usize,
     /// Episode number to start from (0 = fresh run, >0 = resumed).
     pub start_episode: usize,
@@ -149,6 +162,7 @@ impl AlgorithmFFMulti2 {
             num_classes,
             min_return: 0.0,
             max_return: 0.0,
+            bounds_initialized: false,
             target_sync_interval: 10, // sync every N episodes
             start_episode: 0,
         })
@@ -178,6 +192,7 @@ impl AlgorithmFFMulti2 {
             buffer: self.buffer.clone(),
             min_return: self.min_return,
             max_return: self.max_return,
+            bounds_initialized: self.bounds_initialized,
             completed_episode,
             epoch_rewards: epoch_rewards.to_vec(),
         };
@@ -214,6 +229,7 @@ impl AlgorithmFFMulti2 {
         self.buffer = state.buffer;
         self.min_return = state.min_return;
         self.max_return = state.max_return;
+        self.bounds_initialized = state.bounds_initialized;
         self.start_episode = state.completed_episode;
 
         log::info!(
@@ -226,6 +242,53 @@ impl AlgorithmFFMulti2 {
         );
 
         Ok(state.epoch_rewards)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// State Normalization
+// ─────────────────────────────────────────────────────────────
+
+/// Normalize a raw RocketSim / Grid state vector into roughly [-1, 1] range.
+/// RocketSim states are 31-dimensional with heterogeneous scales:
+///   [0..9]   ball pos/vel      (positions up to ~5000, velocities up to ~6000)
+///   [9..18]  car pos/vel       (same ranges)
+///   [18..27] car rotation mat  (already in [-1, 1])
+///   [27]     boost amount      (0..100)
+///   [28..30] boolean flags     (0 or 1)
+/// Grid states are 8-dimensional with values in [0, 50).
+fn normalize_state(raw: &[f64]) -> Vec<f32> {
+    if raw.len() == 31 {
+        // RocketSim
+        let scales: [f32; 31] = [
+            // ball pos xyz
+            4096.0, 5120.0, 2048.0,
+            // ball vel xyz
+            6000.0, 6000.0, 6000.0,
+            // ball ang_vel xyz
+            6.0, 6.0, 6.0,
+            // car pos xyz
+            4096.0, 5120.0, 2048.0,
+            // car vel xyz
+            2300.0, 2300.0, 2300.0,
+            // car ang_vel xyz
+            5.5, 5.5, 5.5,
+            // car rotation matrix (9 elements, already [-1,1])
+            1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0,
+            // boost amount
+            100.0,
+            // boolean flags
+            1.0, 1.0, 1.0,
+        ];
+        raw.iter()
+            .zip(scales.iter())
+            .map(|(&v, &s)| (v as f32) / s)
+            .collect()
+    } else {
+        // Grid or other environments — use generic normalization
+        raw.iter().map(|&x| (x as f32) / 50.0).collect()
     }
 }
 
@@ -299,8 +362,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                 let n_inference = n_envs * action_size;
                 let mut flat_inf = Vec::with_capacity(n_inference * input_size);
                 for state in current_states.iter() {
-                    let state_f32: Vec<f32> =
-                        state.iter().map(|&x| (x as f32) / 50.0).collect();
+                    let state_f32 = normalize_state(state);
                     for a in 0..action_size {
                         for j in 0..action_size {
                             flat_inf.push(if j == a { 1.0f32 } else { 0.0 });
@@ -370,13 +432,11 @@ impl Algorithm for AlgorithmFFMulti2 {
                     }
 
                     // Interact with environment.
-                    let state_f32: Vec<f32> =
-                        env_state.iter().map(|&x| (x as f32) / 50.0).collect();
+                    let state_f32 = normalize_state(env_state);
                     let step_reward = e.evaluate_action(env_state, selected_action);
                     e.apply_action(selected_action)?;
                     let next_state = e.get_state()?;
-                    let next_state_f32: Vec<f32> =
-                        next_state.iter().map(|&x| (x as f32) / 50.0).collect();
+                    let next_state_f32 = normalize_state(&next_state);
 
                     // Store to replay buffer.
                     self.buffer.push((
@@ -510,31 +570,70 @@ impl Algorithm for AlgorithmFFMulti2 {
                 let target_classes = self.target_model.predict(&[tgt_tensor])?;
 
                 // ── 2c: Bellman target → discrete class labels ──
+                // Clamp V_next to current bounds to prevent the self-reinforcing
+                // feedback loop where high-class predictions compound via γ.
                 let mut target_scores = Vec::with_capacity(batch_size);
                 for (i, &idx) in batch_indices.iter().enumerate() {
                     let (_, _, reward, _) = &self.buffer[idx];
-                    let v_next = class_to_value(
+                    let v_next_raw = class_to_value(
                         target_classes[i],
                         self.min_return,
                         self.max_return,
                         self.num_classes,
                     );
+                    let v_next = v_next_raw.clamp(self.min_return, self.max_return);
                     let target_score = reward + gamma * v_next;
                     target_scores.push(target_score);
                 }
 
-                // Update dynamic return bounds from first values & expand as needed.
-                for &ts in &target_scores {
-                    if self.min_return == 0.0 && self.max_return == 0.0 {
-                        // Bootstrap from first observed target.
-                        self.min_return = ts - 1.0;
-                        self.max_return = ts + 1.0;
+                // Update dynamic return bounds based on actual observed rewards
+                // from the replay buffer, NOT from Bellman targets (which are
+                // self-referentially inflated via γ * V_next).
+                //
+                // Strategy: compute percentiles of raw per-step rewards, then
+                // scale to estimate the plausible discounted-return range.
+                // For a geometric series with discount γ, the return range is
+                // roughly [r_low / (1 - γ), r_high / (1 - γ)] but we use a
+                // tighter multiplier to keep resolution high.
+                {
+                    // Sample raw rewards from the batch.
+                    let mut batch_rewards: Vec<f32> = batch_indices
+                        .iter()
+                        .map(|&idx| self.buffer[idx].2)
+                        .collect();
+                    batch_rewards.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let n = batch_rewards.len();
+                    let lo_idx = ((n as f32 * BOUNDS_LOW_PERCENTILE) as usize).min(n - 1);
+                    let hi_idx = ((n as f32 * BOUNDS_HIGH_PERCENTILE) as usize).min(n - 1);
+                    let r_lo = batch_rewards[lo_idx];
+                    let r_hi = batch_rewards[hi_idx];
+
+                    // Estimate discounted return bounds from per-step rewards.
+                    // The full geometric multiplier (1-γ^H)/(1-γ) is too
+                    // aggressive since actual returns have high variance.
+                    // Using √(multiplier) gives a tighter, more practical range.
+                    let horizon = self.n_steps_per_episode as f32;
+                    let effective_horizon = ((1.0 - gamma.powf(horizon)) / (1.0 - gamma)).sqrt();
+                    let target_lo = r_lo * effective_horizon;
+                    let target_hi = r_hi * effective_horizon;
+
+                    if !self.bounds_initialized {
+                        self.min_return = target_lo - 1.0;
+                        self.max_return = target_hi + 1.0;
+                        self.bounds_initialized = true;
+                    } else {
+                        // EMA smooth towards empirical bounds.
+                        self.min_return = (1.0 - BOUNDS_EMA_ALPHA) * self.min_return
+                            + BOUNDS_EMA_ALPHA * target_lo;
+                        self.max_return = (1.0 - BOUNDS_EMA_ALPHA) * self.max_return
+                            + BOUNDS_EMA_ALPHA * target_hi;
                     }
-                    if ts < self.min_return {
-                        self.min_return = ts;
-                    }
-                    if ts > self.max_return {
-                        self.max_return = ts;
+
+                    // Enforce minimum range.
+                    if self.max_return - self.min_return < MIN_RETURN_RANGE {
+                        let mid = (self.min_return + self.max_return) / 2.0;
+                        self.min_return = mid - MIN_RETURN_RANGE / 2.0;
+                        self.max_return = mid + MIN_RETURN_RANGE / 2.0;
                     }
                 }
 
@@ -545,6 +644,25 @@ impl Algorithm for AlgorithmFFMulti2 {
                         value_to_class(ts, self.min_return, self.max_return, self.num_classes)
                     })
                     .collect();
+
+                // ── Diagnostic: log class distribution every 10 episodes ──
+                if episode % 10 == 0 {
+                    let mut class_counts = vec![0usize; self.num_classes];
+                    for &c in &training_labels {
+                        class_counts[c] += 1;
+                    }
+                    let distinct = class_counts.iter().filter(|&&c| c > 0).count();
+                    let max_count = class_counts.iter().max().copied().unwrap_or(0);
+                    log::info!(
+                        "ClassDist: distinct={}/{} | max_bucket={}/{} | range=[{:.4}, {:.4}]",
+                        distinct,
+                        self.num_classes,
+                        max_count,
+                        training_labels.len(),
+                        self.min_return,
+                        self.max_return,
+                    );
+                }
 
                 // ═══════════════════════════════════════════════════
                 // Phase 3: Model Training
