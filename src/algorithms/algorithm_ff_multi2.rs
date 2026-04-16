@@ -29,6 +29,13 @@ const MIN_RETURN_RANGE: f32 = 2.0;
 const BOUNDS_LOW_PERCENTILE: f32 = 0.05;
 const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
 
+/// Scale factor for one-hot action encoding.
+/// After L2 normalization, the raw one-hot (1.0) is diluted by the state
+/// dimensions, making it hard for the model to distinguish between actions.
+/// Scaling up to 3.0 ensures the action is a dominant part of the input
+/// direction after normalization.
+const ACTION_SCALE: f32 = 3.0;
+
 // ─────────────────────────────────────────────────────────────
 // Checkpoint Metadata
 // ─────────────────────────────────────────────────────────────
@@ -37,8 +44,8 @@ const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
 /// (which go into safetensors files via `FFMultiModel::save`).
 #[derive(Serialize, Deserialize)]
 struct TrainingState {
-    /// Replay buffer entries: (normalised_state, action_id, reward, normalised_next_state).
-    buffer: Vec<(Vec<f32>, usize, f32, Vec<f32>)>,
+    /// Replay buffer entries: (normalised_state, action_id, monte_carlo_return).
+    buffer: Vec<(Vec<f32>, usize, f32)>,
     min_return: f32,
     max_return: f32,
     bounds_initialized: bool,
@@ -109,8 +116,8 @@ pub struct AlgorithmFFMulti2 {
     pub n_steps_per_episode: usize,
     pub epochs_per_episode: usize,
     pub device: Device,
-    /// Replay buffer: (normalised_state, action_id, reward, normalised_next_state)
-    pub buffer: Vec<(Vec<f32>, usize, f32, Vec<f32>)>,
+    /// Replay buffer: (normalised_state, action_id, monte_carlo_return)
+    pub buffer: Vec<(Vec<f32>, usize, f32)>,
     pub num_classes: usize,
     pub min_return: f32,
     pub max_return: f32,
@@ -129,7 +136,7 @@ impl AlgorithmFFMulti2 {
         device: Device,
     ) -> Result<Self, Box<dyn Error>> {
         let input_size = state_size + action_size; // [one-hot action ++ state]
-        let epochs_per_episode = 20;
+        let epochs_per_episode = 4;
         let num_classes = NUM_RETURN_CLASSES;
 
         // Round each hidden size up to the nearest multiple of num_classes
@@ -318,8 +325,8 @@ impl Algorithm for AlgorithmFFMulti2 {
             envs.push(env.clone_box());
         }
 
-        let gamma = 0.99f32;
-        let tau = 0.07f32; // Boltzmann temperature for action selection
+        let gamma = 0.9f32;
+        let tau = 0.5f32; // Boltzmann temperature for action selection
 
         let checkpoint_dir = std::path::Path::new(CHECKPOINT_DIR);
 
@@ -340,6 +347,11 @@ impl Algorithm for AlgorithmFFMulti2 {
                 episode, n_envs, self.min_return, self.max_return
             );
 
+            // ── Episode-local trajectory buffers for MC return computation ──
+            let mut episode_trajectories: Vec<Vec<(Vec<f32>, usize, f32)>> =
+                (0..n_envs).map(|_| Vec::with_capacity(self.n_steps_per_episode)).collect();
+
+            // Reset all environments at the start of each episode.
             for e in envs.iter_mut() {
                 e.reset()?;
             }
@@ -365,7 +377,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                     let state_f32 = normalize_state(state);
                     for a in 0..action_size {
                         for j in 0..action_size {
-                            flat_inf.push(if j == a { 1.0f32 } else { 0.0 });
+                            flat_inf.push(if j == a { ACTION_SCALE } else { 0.0 });
                         }
                         flat_inf.extend(state_f32.iter());
                     }
@@ -375,75 +387,98 @@ impl Algorithm for AlgorithmFFMulti2 {
                     flat_inf, (n_inference, input_size), &self.device,
                 )?;
 
-                // Main Model: predict return-class for each (state, action).
-                let predicted_classes = self.main_model.predict(&[inf_tensor])?;
+                // Main Model: get raw goodness scores for each (state, action).
+                // Using predict_scores() instead of predict() gives continuous
+                // action values via soft expected returns—even when the argmax
+                // class is the same for all actions, the goodness distribution
+                // still differs, producing differentiable action preferences.
+                let score_tensor = self.main_model.predict_scores(&[inf_tensor])?;
+                let scores_flat: Vec<f32> = score_tensor.flatten_all()?.to_vec1()?;
 
                 // Select actions per env.
                 for (env_idx, env_state) in current_states.iter().enumerate() {
                     let e = &mut envs[env_idx];
                     let chunk_start = env_idx * action_size;
 
-                    // Map each action's predicted class → continuous expected return.
+                    // Compute soft expected value for each action.
                     let expected_values: Vec<f32> = (0..action_size)
                         .map(|a| {
-                            class_to_value(
-                                predicted_classes[chunk_start + a],
-                                self.min_return,
-                                self.max_return,
-                                self.num_classes,
-                            )
+                            let row_start = (chunk_start + a) * self.num_classes;
+                            let row_end = row_start + self.num_classes;
+                            let goodnesses = &scores_flat[row_start..row_end];
+
+                            // Softmax over goodnesses → probability distribution over classes.
+                            let max_g = goodnesses.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let exps: Vec<f32> = goodnesses.iter().map(|&g| (g - max_g).exp()).collect();
+                            let exp_sum: f32 = exps.iter().sum();
+
+                            // Weighted average return = Σ p(class) * value(class).
+                            let mut expected_val = 0.0f32;
+                            for (c, &e_val) in exps.iter().enumerate() {
+                                let p = e_val / exp_sum;
+                                expected_val += p * class_to_value(c, self.min_return, self.max_return, self.num_classes);
+                            }
+                            expected_val
                         })
                         .collect();
 
                     if episode % 10 == 0 && _step == 0 && env_idx == 0 {
-                        let classes: Vec<usize> = (0..action_size)
-                            .map(|a| predicted_classes[chunk_start + a])
-                            .collect();
                         log::info!(
-                            "Ep {} Step 0 | Classes: {:?} | Values: {:.4?}",
-                            episode, classes, expected_values
+                            "Ep {} Step 0 | SoftValues: {:.4?}",
+                            episode, expected_values
                         );
                     }
 
-                    // Boltzmann (softmax) action selection.
-                    let max_v = expected_values
-                        .iter()
-                        .cloned()
-                        .fold(f32::NEG_INFINITY, f32::max);
-                    let mut exp_sum = 0.0f32;
-                    let exps: Vec<f32> = expected_values
-                        .iter()
-                        .map(|&v| {
-                            let e_val = ((v - max_v) / tau).exp();
-                            exp_sum += e_val;
-                            e_val
-                        })
-                        .collect();
+                    // ε-greedy on top of Boltzmann — ensures diverse actions
+                    // in the buffer even when the model is highly confident.
+                    let epsilon_start = 0.20f32;
+                    let epsilon_end = 0.05f32;
+                    let decay_episodes = 200.0f32;
+                    let epsilon = epsilon_end
+                        + (epsilon_start - epsilon_end)
+                            * (1.0 - (episode as f32 / decay_episodes).min(1.0));
 
-                    let rand_val: f32 = rng.r#gen::<f32>() * exp_sum;
-                    let mut cumulative = 0.0;
-                    let mut selected_action = action_size - 1;
-                    for (a, &e_val) in exps.iter().enumerate() {
-                        cumulative += e_val;
-                        if rand_val <= cumulative {
-                            selected_action = a;
-                            break;
+                    let selected_action = if rng.r#gen::<f32>() < epsilon {
+                        // Random exploration
+                        rng.gen_range(0..action_size)
+                    } else {
+                        // Boltzmann (softmax) action selection.
+                        let max_v = expected_values
+                            .iter()
+                            .cloned()
+                            .fold(f32::NEG_INFINITY, f32::max);
+                        let mut exp_sum = 0.0f32;
+                        let exps: Vec<f32> = expected_values
+                            .iter()
+                            .map(|&v| {
+                                let e_val = ((v - max_v) / tau).exp();
+                                exp_sum += e_val;
+                                e_val
+                            })
+                            .collect();
+
+                        let rand_val: f32 = rng.r#gen::<f32>() * exp_sum;
+                        let mut cumulative = 0.0;
+                        let mut sel = action_size - 1;
+                        for (a, &e_val) in exps.iter().enumerate() {
+                            cumulative += e_val;
+                            if rand_val <= cumulative {
+                                sel = a;
+                                break;
+                            }
                         }
-                    }
+                        sel
+                    };
 
-                    // Interact with environment.
+                    // Record step data for MC return computation at episode end.
                     let state_f32 = normalize_state(env_state);
                     let step_reward = e.evaluate_action(env_state, selected_action);
                     e.apply_action(selected_action)?;
-                    let next_state = e.get_state()?;
-                    let next_state_f32 = normalize_state(&next_state);
 
-                    // Store to replay buffer.
-                    self.buffer.push((
+                    episode_trajectories[env_idx].push((
                         state_f32,
                         selected_action,
                         step_reward as f32,
-                        next_state_f32,
                     ));
                     raw_rewards[env_idx] += step_reward;
                 }
@@ -500,6 +535,24 @@ impl Algorithm for AlgorithmFFMulti2 {
                 }
             }
 
+            // ── Compute Monte Carlo returns and add to replay buffer ──
+            // For each environment's episode trajectory, compute discounted
+            // return-to-go from actual rewards (no bootstrapping).
+            for traj in &episode_trajectories {
+                let n_steps = traj.len();
+                if n_steps == 0 {
+                    continue;
+                }
+                let mut returns = vec![0.0f32; n_steps];
+                returns[n_steps - 1] = traj[n_steps - 1].2;
+                for t in (0..n_steps - 1).rev() {
+                    returns[t] = traj[t].2 + gamma * returns[t + 1];
+                }
+                for (t, (state, action, _reward)) in traj.iter().enumerate() {
+                    self.buffer.push((state.clone(), *action, returns[t]));
+                }
+            }
+
             // ── Trim replay buffer ──
             if self.buffer.len() > 100_000 {
                 let drain_count = self.buffer.len() - 100_000;
@@ -517,119 +570,30 @@ impl Algorithm for AlgorithmFFMulti2 {
                 indices.shuffle(&mut rng);
                 let batch_indices = &indices[0..batch_size];
 
-                // ── 2a: Lookahead – find best next action via Main Model ──
-                let n_lookahead = batch_size * action_size;
-                let mut flat_look = Vec::with_capacity(n_lookahead * input_size);
-                for &idx in batch_indices {
-                    let (_, _, _, ref s_next) = self.buffer[idx];
-                    for a in 0..action_size {
-                        for j in 0..action_size {
-                            flat_look.push(if j == a { 1.0f32 } else { 0.0 });
-                        }
-                        flat_look.extend(s_next.iter());
-                    }
-                }
-                let look_tensor = Tensor::from_vec(
-                    flat_look, (n_lookahead, input_size), &self.device,
-                )?;
-                let lookahead_classes = self.main_model.predict(&[look_tensor])?;
-
-                let mut best_next_actions = Vec::with_capacity(batch_size);
-                for i in 0..batch_size {
-                    let chunk_start = i * action_size;
-                    let mut best_a = 0;
-                    let mut best_val = f32::NEG_INFINITY;
-                    for a in 0..action_size {
-                        let val = class_to_value(
-                            lookahead_classes[chunk_start + a],
-                            self.min_return,
-                            self.max_return,
-                            self.num_classes,
-                        );
-                        if val > best_val {
-                            best_val = val;
-                            best_a = a;
-                        }
-                    }
-                    best_next_actions.push(best_a);
-                }
-
-                // ── 2b: Target evaluation – predict class via Target Model ──
-                let mut flat_tgt = Vec::with_capacity(batch_size * input_size);
-                for (i, &idx) in batch_indices.iter().enumerate() {
-                    let (_, _, _, ref s_next) = self.buffer[idx];
-                    let best_a = best_next_actions[i];
-                    for j in 0..action_size {
-                        flat_tgt.push(if j == best_a { 1.0f32 } else { 0.0 });
-                    }
-                    flat_tgt.extend(s_next.iter());
-                }
-                let tgt_tensor = Tensor::from_vec(
-                    flat_tgt, (batch_size, input_size), &self.device,
-                )?;
-                let target_classes = self.target_model.predict(&[tgt_tensor])?;
-
-                // ── 2c: Bellman target → discrete class labels ──
-                // Clamp V_next to current bounds to prevent the self-reinforcing
-                // feedback loop where high-class predictions compound via γ.
-                let mut target_scores = Vec::with_capacity(batch_size);
-                for (i, &idx) in batch_indices.iter().enumerate() {
-                    let (_, _, reward, _) = &self.buffer[idx];
-                    let v_next_raw = class_to_value(
-                        target_classes[i],
-                        self.min_return,
-                        self.max_return,
-                        self.num_classes,
-                    );
-                    let v_next = v_next_raw.clamp(self.min_return, self.max_return);
-                    let target_score = reward + gamma * v_next;
-                    target_scores.push(target_score);
-                }
-
-                // Update dynamic return bounds based on actual observed rewards
-                // from the replay buffer, NOT from Bellman targets (which are
-                // self-referentially inflated via γ * V_next).
-                //
-                // Strategy: compute percentiles of raw per-step rewards, then
-                // scale to estimate the plausible discounted-return range.
-                // For a geometric series with discount γ, the return range is
-                // roughly [r_low / (1 - γ), r_high / (1 - γ)] but we use a
-                // tighter multiplier to keep resolution high.
+                // ── Compute bounds from actual MC returns in the batch ──
                 {
-                    // Sample raw rewards from the batch.
-                    let mut batch_rewards: Vec<f32> = batch_indices
+                    let mut batch_returns: Vec<f32> = batch_indices
                         .iter()
                         .map(|&idx| self.buffer[idx].2)
                         .collect();
-                    batch_rewards.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                    let n = batch_rewards.len();
+                    batch_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    let n = batch_returns.len();
                     let lo_idx = ((n as f32 * BOUNDS_LOW_PERCENTILE) as usize).min(n - 1);
                     let hi_idx = ((n as f32 * BOUNDS_HIGH_PERCENTILE) as usize).min(n - 1);
-                    let r_lo = batch_rewards[lo_idx];
-                    let r_hi = batch_rewards[hi_idx];
-
-                    // Estimate discounted return bounds from per-step rewards.
-                    // The full geometric multiplier (1-γ^H)/(1-γ) is too
-                    // aggressive since actual returns have high variance.
-                    // Using √(multiplier) gives a tighter, more practical range.
-                    let horizon = self.n_steps_per_episode as f32;
-                    let effective_horizon = ((1.0 - gamma.powf(horizon)) / (1.0 - gamma)).sqrt();
-                    let target_lo = r_lo * effective_horizon;
-                    let target_hi = r_hi * effective_horizon;
+                    let r_lo = batch_returns[lo_idx];
+                    let r_hi = batch_returns[hi_idx];
 
                     if !self.bounds_initialized {
-                        self.min_return = target_lo - 1.0;
-                        self.max_return = target_hi + 1.0;
+                        self.min_return = r_lo - 1.0;
+                        self.max_return = r_hi + 1.0;
                         self.bounds_initialized = true;
                     } else {
-                        // EMA smooth towards empirical bounds.
                         self.min_return = (1.0 - BOUNDS_EMA_ALPHA) * self.min_return
-                            + BOUNDS_EMA_ALPHA * target_lo;
+                            + BOUNDS_EMA_ALPHA * r_lo;
                         self.max_return = (1.0 - BOUNDS_EMA_ALPHA) * self.max_return
-                            + BOUNDS_EMA_ALPHA * target_hi;
+                            + BOUNDS_EMA_ALPHA * r_hi;
                     }
 
-                    // Enforce minimum range.
                     if self.max_return - self.min_return < MIN_RETURN_RANGE {
                         let mid = (self.min_return + self.max_return) / 2.0;
                         self.min_return = mid - MIN_RETURN_RANGE / 2.0;
@@ -637,11 +601,11 @@ impl Algorithm for AlgorithmFFMulti2 {
                     }
                 }
 
-                // Discretise targets into class labels.
-                let training_labels: Vec<usize> = target_scores
+                // Discretise MC returns into class labels.
+                let training_labels: Vec<usize> = batch_indices
                     .iter()
-                    .map(|&ts| {
-                        value_to_class(ts, self.min_return, self.max_return, self.num_classes)
+                    .map(|&idx| {
+                        value_to_class(self.buffer[idx].2, self.min_return, self.max_return, self.num_classes)
                     })
                     .collect();
 
@@ -669,9 +633,9 @@ impl Algorithm for AlgorithmFFMulti2 {
                 // ═══════════════════════════════════════════════════
                 let mut flat_train = Vec::with_capacity(batch_size * input_size);
                 for &idx in batch_indices {
-                    let (ref s, action, _, _) = self.buffer[idx];
+                    let (ref s, action, _) = self.buffer[idx];
                     for j in 0..action_size {
-                        flat_train.push(if j == action { 1.0f32 } else { 0.0 });
+                        flat_train.push(if j == action { ACTION_SCALE } else { 0.0 });
                     }
                     flat_train.extend(s.iter());
                 }
