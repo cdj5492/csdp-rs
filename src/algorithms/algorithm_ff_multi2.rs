@@ -3,8 +3,8 @@ use crate::environment::Environment;
 use crate::models::ff_multi_model::FFMultiModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::sync::{Arc, Mutex};
@@ -88,10 +88,7 @@ fn value_to_class(value: f32, min_ret: f32, max_ret: f32, n_classes: usize) -> u
 
 /// Hard-copies every tracked variable from `main` into `target`.
 /// Uses `VarMap::set_one` for safe per-key overwrites.
-fn sync_target_from_main(
-    main: &FFMultiModel,
-    target: &FFMultiModel,
-) -> Result<(), Box<dyn Error>> {
+fn sync_target_from_main(main: &FFMultiModel, target: &FFMultiModel) -> Result<(), Box<dyn Error>> {
     for (main_vm, target_vm) in main.varmaps.iter().zip(target.varmaps.iter()) {
         let main_data = main_vm.data().lock().unwrap();
         let target_data = target_vm.data().lock().unwrap();
@@ -136,7 +133,7 @@ impl AlgorithmFFMulti2 {
         device: Device,
     ) -> Result<Self, Box<dyn Error>> {
         let input_size = state_size + action_size; // [one-hot action ++ state]
-        let epochs_per_episode = 4;
+        let epochs_per_episode = 12;
         let num_classes = NUM_RETURN_CLASSES;
 
         // Round each hidden size up to the nearest multiple of num_classes
@@ -147,13 +144,11 @@ impl AlgorithmFFMulti2 {
             dims.push(rounded);
         }
 
-        let main_model =
-            FFMultiModel::new(&dims, num_classes, &device, epochs_per_episode)
-                .expect("Failed to create main FFMultiModel");
+        let main_model = FFMultiModel::new(&dims, num_classes, &device, epochs_per_episode)
+            .expect("Failed to create main FFMultiModel");
         // Target never trains – epoch count is irrelevant.
-        let target_model =
-            FFMultiModel::new(&dims, num_classes, &device, 1)
-                .expect("Failed to create target FFMultiModel");
+        let target_model = FFMultiModel::new(&dims, num_classes, &device, 1)
+            .expect("Failed to create target FFMultiModel");
 
         // Initialise target weights to match main.
         sync_target_from_main(&main_model, &target_model)?;
@@ -161,8 +156,8 @@ impl AlgorithmFFMulti2 {
         Ok(Self {
             main_model,
             target_model,
-            n_episodes: 500,
-            n_steps_per_episode: 70,
+            n_episodes: 1000,
+            n_steps_per_episode: 500,
             epochs_per_episode,
             device,
             buffer: Vec::new(),
@@ -269,24 +264,14 @@ fn normalize_state(raw: &[f64]) -> Vec<f32> {
         // RocketSim
         let scales: [f32; 31] = [
             // ball pos xyz
-            4096.0, 5120.0, 2048.0,
-            // ball vel xyz
-            6000.0, 6000.0, 6000.0,
-            // ball ang_vel xyz
-            6.0, 6.0, 6.0,
-            // car pos xyz
-            4096.0, 5120.0, 2048.0,
-            // car vel xyz
-            2300.0, 2300.0, 2300.0,
-            // car ang_vel xyz
-            5.5, 5.5, 5.5,
-            // car rotation matrix (9 elements, already [-1,1])
-            1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0,
-            1.0, 1.0, 1.0,
-            // boost amount
-            100.0,
-            // boolean flags
+            4096.0, 5120.0, 2048.0, // ball vel xyz
+            6000.0, 6000.0, 6000.0, // ball ang_vel xyz
+            6.0, 6.0, 6.0, // car pos xyz
+            4096.0, 5120.0, 2048.0, // car vel xyz
+            2300.0, 2300.0, 2300.0, // car ang_vel xyz
+            5.5, 5.5, 5.5, // car rotation matrix (9 elements, already [-1,1])
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, // boost amount
+            100.0, // boolean flags
             1.0, 1.0, 1.0,
         ];
         raw.iter()
@@ -344,12 +329,16 @@ impl Algorithm for AlgorithmFFMulti2 {
 
             log::info!(
                 "starting episode {} (x{} envs) | ReturnRange: [{:.4}, {:.4}]",
-                episode, n_envs, self.min_return, self.max_return
+                episode,
+                n_envs,
+                self.min_return,
+                self.max_return
             );
 
             // ── Episode-local trajectory buffers for MC return computation ──
-            let mut episode_trajectories: Vec<Vec<(Vec<f32>, usize, f32)>> =
-                (0..n_envs).map(|_| Vec::with_capacity(self.n_steps_per_episode)).collect();
+            let mut episode_trajectories: Vec<Vec<(Vec<f32>, usize, f32)>> = (0..n_envs)
+                .map(|_| Vec::with_capacity(self.n_steps_per_episode))
+                .collect();
 
             // Reset all environments at the start of each episode.
             for e in envs.iter_mut() {
@@ -383,9 +372,8 @@ impl Algorithm for AlgorithmFFMulti2 {
                     }
                 }
                 total_inference_actions += n_inference;
-                let inf_tensor = Tensor::from_vec(
-                    flat_inf, (n_inference, input_size), &self.device,
-                )?;
+                let inf_tensor =
+                    Tensor::from_vec(flat_inf, (n_inference, input_size), &self.device)?;
 
                 // Main Model: get raw goodness scores for each (state, action).
                 // Using predict_scores() instead of predict() gives continuous
@@ -408,15 +396,22 @@ impl Algorithm for AlgorithmFFMulti2 {
                             let goodnesses = &scores_flat[row_start..row_end];
 
                             // Softmax over goodnesses → probability distribution over classes.
-                            let max_g = goodnesses.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                            let exps: Vec<f32> = goodnesses.iter().map(|&g| (g - max_g).exp()).collect();
+                            let max_g =
+                                goodnesses.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let exps: Vec<f32> =
+                                goodnesses.iter().map(|&g| (g - max_g).exp()).collect();
                             let exp_sum: f32 = exps.iter().sum();
 
                             // Weighted average return = Σ p(class) * value(class).
                             let mut expected_val = 0.0f32;
                             for (c, &e_val) in exps.iter().enumerate() {
                                 let p = e_val / exp_sum;
-                                expected_val += p * class_to_value(c, self.min_return, self.max_return, self.num_classes);
+                                expected_val += p * class_to_value(
+                                    c,
+                                    self.min_return,
+                                    self.max_return,
+                                    self.num_classes,
+                                );
                             }
                             expected_val
                         })
@@ -425,7 +420,8 @@ impl Algorithm for AlgorithmFFMulti2 {
                     if episode % 10 == 0 && _step == 0 && env_idx == 0 {
                         log::info!(
                             "Ep {} Step 0 | SoftValues: {:.4?}",
-                            episode, expected_values
+                            episode,
+                            expected_values
                         );
                     }
 
@@ -491,10 +487,9 @@ impl Algorithm for AlgorithmFFMulti2 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((
-                                env_state[0] + env_state[2],
-                                env_state[1] + env_state[3],
-                            ));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -576,7 +571,8 @@ impl Algorithm for AlgorithmFFMulti2 {
                         .iter()
                         .map(|&idx| self.buffer[idx].2)
                         .collect();
-                    batch_returns.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                    batch_returns
+                        .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                     let n = batch_returns.len();
                     let lo_idx = ((n as f32 * BOUNDS_LOW_PERCENTILE) as usize).min(n - 1);
                     let hi_idx = ((n as f32 * BOUNDS_HIGH_PERCENTILE) as usize).min(n - 1);
@@ -588,10 +584,10 @@ impl Algorithm for AlgorithmFFMulti2 {
                         self.max_return = r_hi + 1.0;
                         self.bounds_initialized = true;
                     } else {
-                        self.min_return = (1.0 - BOUNDS_EMA_ALPHA) * self.min_return
-                            + BOUNDS_EMA_ALPHA * r_lo;
-                        self.max_return = (1.0 - BOUNDS_EMA_ALPHA) * self.max_return
-                            + BOUNDS_EMA_ALPHA * r_hi;
+                        self.min_return =
+                            (1.0 - BOUNDS_EMA_ALPHA) * self.min_return + BOUNDS_EMA_ALPHA * r_lo;
+                        self.max_return =
+                            (1.0 - BOUNDS_EMA_ALPHA) * self.max_return + BOUNDS_EMA_ALPHA * r_hi;
                     }
 
                     if self.max_return - self.min_return < MIN_RETURN_RANGE {
@@ -605,7 +601,12 @@ impl Algorithm for AlgorithmFFMulti2 {
                 let training_labels: Vec<usize> = batch_indices
                     .iter()
                     .map(|&idx| {
-                        value_to_class(self.buffer[idx].2, self.min_return, self.max_return, self.num_classes)
+                        value_to_class(
+                            self.buffer[idx].2,
+                            self.min_return,
+                            self.max_return,
+                            self.num_classes,
+                        )
                     })
                     .collect();
 
@@ -639,9 +640,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                     }
                     flat_train.extend(s.iter());
                 }
-                let batch_x = Tensor::from_vec(
-                    flat_train, (batch_size, input_size), &self.device,
-                )?;
+                let batch_x = Tensor::from_vec(flat_train, (batch_size, input_size), &self.device)?;
                 self.main_model.train(&batch_x, &training_labels)?;
                 total_epochs += self.epochs_per_episode;
             }
@@ -674,11 +673,9 @@ impl Algorithm for AlgorithmFFMulti2 {
                         // Drop the lock before doing I/O.
                         state.save_requested = false;
                         drop(state);
-                        if let Err(e) = self.save_checkpoint(
-                            checkpoint_dir,
-                            episode,
-                            &epoch_rewards,
-                        ) {
+                        if let Err(e) =
+                            self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards)
+                        {
                             log::error!("Manual save failed: {}", e);
                         }
                     } else if state.load_requested {
@@ -695,12 +692,12 @@ impl Algorithm for AlgorithmFFMulti2 {
                                 }
                                 // Re-sync target model after loading.
                                 sync_target_from_main(&self.main_model, &self.target_model)?;
-                                
-                                // Jump the loop counter so training resumes properly 
+
+                                // Jump the loop counter so training resumes properly
                                 // instead of continuing the old loop index over loaded data.
                                 episode = self.start_episode;
                                 episode_end = self.start_episode + self.n_episodes;
-                                
+
                                 log::info!("Manual load succeeded. Continuing training.");
                             }
                             Err(e) => {

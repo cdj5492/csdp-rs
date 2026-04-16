@@ -329,7 +329,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if algo_choice == "ff_multi2" {
         log::info!("Using Algorithm FF Multi 2 (Classification-Based RL)");
         let mut algo =
-            AlgorithmFFMulti2::new(state_size, action_size, vec![512, 256], device.clone())
+            AlgorithmFFMulti2::new(state_size, action_size, vec![512, 256, 128], device.clone())
                 .expect("Failed to create AlgorithmFFMulti2");
         if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
