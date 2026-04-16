@@ -571,18 +571,36 @@ impl NeuralNetworkVisualizerApp {
         let mut min_r = f32::MAX;
         let mut max_r = f32::MIN;
         let mut points = Vec::new();
-        for &(e, r) in history.iter() {
-            min_r = min_r.min(r);
-            max_r = max_r.max(r);
+        let mut avg_points = Vec::new();
+        let window_size = 20;
+
+        for (i, &(e, r)) in history.iter().enumerate() {
             points.push((e as f64, r as f64));
+            
+            // Calculate running average
+            let start_idx = i.saturating_sub(window_size);
+            let count = i - start_idx + 1;
+            let sum: f32 = history[start_idx..=i].iter().map(|&(_, v)| v).sum();
+            let avg = sum / count as f32;
+            avg_points.push((e as f64, avg as f64));
+            
+            min_r = min_r.min(r).min(avg);
+            max_r = max_r.max(r).max(avg);
         }
 
         let datasets = vec![
             ratatui::widgets::Dataset::default()
+                .name("Reward")
                 .marker(ratatui::symbols::Marker::Braille)
                 .graph_type(ratatui::widgets::GraphType::Line)
-                .style(Style::default().fg(Color::Cyan))
-                .data(&points)
+                .style(Style::default().fg(Color::DarkGray))
+                .data(&points),
+            ratatui::widgets::Dataset::default()
+                .name(format!("Avg ({})", window_size))
+                .marker(ratatui::symbols::Marker::Braille)
+                .graph_type(ratatui::widgets::GraphType::Line)
+                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                .data(&avg_points)
         ];
 
         let chart = ratatui::widgets::Chart::new(datasets)

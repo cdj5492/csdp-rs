@@ -331,10 +331,10 @@ impl Algorithm for AlgorithmFFMulti2 {
         let checkpoint_dir = std::path::Path::new(CHECKPOINT_DIR);
 
         // Episode range: if resuming, start after the last completed episode.
-        let episode_start = self.start_episode + 1;
-        let episode_end = self.start_episode + self.n_episodes;
+        let mut episode = self.start_episode + 1;
+        let mut episode_end = self.start_episode + self.n_episodes;
 
-        for episode in episode_start..=episode_end {
+        while episode <= episode_end {
             // ── early-exit on close ──
             if let Some(ref vs) = vis_state {
                 if vs.try_lock().map(|s| s.should_close).unwrap_or(false) {
@@ -695,6 +695,12 @@ impl Algorithm for AlgorithmFFMulti2 {
                                 }
                                 // Re-sync target model after loading.
                                 sync_target_from_main(&self.main_model, &self.target_model)?;
+                                
+                                // Jump the loop counter so training resumes properly 
+                                // instead of continuing the old loop index over loaded data.
+                                episode = self.start_episode;
+                                episode_end = self.start_episode + self.n_episodes;
+                                
                                 log::info!("Manual load succeeded. Continuing training.");
                             }
                             Err(e) => {
@@ -737,6 +743,8 @@ impl Algorithm for AlgorithmFFMulti2 {
                 self.min_return,
                 self.max_return
             );
+
+            episode += 1;
         }
 
         // ═══════════════════════════════════════════════════
