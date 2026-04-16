@@ -7,3 +7,4 @@ pub mod robot;
 pub mod synapse;
 pub mod utils;
 pub mod visualization;
+pub mod flat;

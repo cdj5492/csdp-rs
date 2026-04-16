@@ -8,6 +8,8 @@ use std::error::Error;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::str::FromStr;
 use std::sync::Once;
+use crate::flat::rocketsim as flat_rs;
+use planus::WriteAsOffset;
 
 const RLVISER_PORT: u16 = 45243;
 const ROCKETSIM_PORT: u16 = 34254;
@@ -36,6 +38,7 @@ pub struct RocketSimEnvironment {
     tick_skip: i32,
     prev_dist_to_ball: f32,
     prev_dist_ball_to_net: f32,
+    builder: RefCell<planus::Builder>,
 }
 
 // Implement Clone is required by our trait but Arena UniquePtr can't be cloned.
@@ -73,6 +76,7 @@ impl RocketSimEnvironment {
             tick_skip,
             prev_dist_to_ball: 0.0,
             prev_dist_ball_to_net: 0.0,
+            builder: RefCell::new(planus::Builder::new()),
         };
         
         env.reset().unwrap();
@@ -135,8 +139,24 @@ impl RocketSimEnvironment {
     fn send_state_to_rlviser(&self) {
         let mut arena = self.arena.borrow_mut();
         let game_state = arena.pin_mut().get_game_state();
-        let _ = self.socket.send_to(&[UdpPacketTypes::GameState as u8], self.rlviser_addr);
-        let _ = self.socket.send_to(&game_state.to_bytes(), self.rlviser_addr);
+
+        let mut builder = self.builder.borrow_mut();
+        builder.clear();
+        
+        let flat_state = to_flat_game_state(&game_state);
+
+        let packet = flat_rs::Packet {
+            message: flat_rs::Message::GameState(Box::new(flat_state)),
+        };
+
+        let offset = packet.prepare(&mut *builder);
+        let bytes = builder.finish(offset, None);
+
+        let len = bytes.len() as u64;
+        let mut msg = len.to_be_bytes().to_vec();
+        msg.extend_from_slice(bytes);
+
+        let _ = self.socket.send_to(&msg, self.rlviser_addr);
     }
 }
 
@@ -289,3 +309,128 @@ impl Environment for RocketSimEnvironment {
         Ok(())
     }
 }
+
+fn to_flat_vec3(v: rocketsim_rs::math::Vec3) -> flat_rs::Vec3 {
+    flat_rs::Vec3 { x: v.x, y: v.y, z: v.z }
+}
+
+fn to_flat_mat3(m: rocketsim_rs::math::RotMat) -> flat_rs::Mat3 {
+    flat_rs::Mat3 {
+        forward: to_flat_vec3(m.forward),
+        right: to_flat_vec3(m.right),
+        up: to_flat_vec3(m.up),
+    }
+}
+
+fn to_flat_game_state(state: &rocketsim_rs::GameState) -> flat_rs::GameState {
+    flat_rs::GameState {
+        tick_rate: state.tick_rate,
+        tick_count: state.tick_count,
+        game_mode: match state.game_mode {
+            GameMode::Soccar => flat_rs::GameMode::Soccar,
+            GameMode::Hoops => flat_rs::GameMode::Hoops,
+            GameMode::Heatseeker => flat_rs::GameMode::Heatseeker,
+            GameMode::Snowday => flat_rs::GameMode::Snowday,
+            GameMode::Dropshot => flat_rs::GameMode::Dropshot,
+            _ => flat_rs::GameMode::Soccar,
+        },
+        cars: Some(state.cars.iter().map(|c| {
+            flat_rs::CarInfo {
+                id: c.id as u64,
+                team: match c.team {
+                    Team::Blue => flat_rs::Team::Blue,
+                    Team::Orange => flat_rs::Team::Orange,
+                },
+                state: Box::new(flat_rs::CarState {
+                    physics: flat_rs::PhysState {
+                        pos: to_flat_vec3(c.state.pos),
+                        rot_mat: to_flat_mat3(c.state.rot_mat),
+                        vel: to_flat_vec3(c.state.vel),
+                        ang_vel: to_flat_vec3(c.state.ang_vel),
+                    },
+                    is_on_ground: c.state.is_on_ground,
+                    wheels_with_contact: flat_rs::WheelsWithContact {
+                        front_left: c.state.wheels_with_contact[0],
+                        front_right: c.state.wheels_with_contact[1],
+                        rear_left: c.state.wheels_with_contact[2],
+                        rear_right: c.state.wheels_with_contact[3],
+                    },
+                    has_jumped: c.state.has_jumped,
+                    has_double_jumped: c.state.has_double_jumped,
+                    has_flipped: c.state.has_flipped,
+                    flip_rel_torque: to_flat_vec3(c.state.flip_rel_torque),
+                    jump_time: c.state.jump_time,
+                    flip_time: c.state.flip_time,
+                    is_flipping: c.state.is_flipping,
+                    is_jumping: c.state.is_jumping,
+                    air_time: c.state.air_time,
+                    air_time_since_jump: c.state.air_time_since_jump,
+                    boost: c.state.boost,
+                    time_since_boosted: c.state.time_since_boosted,
+                    is_boosting: c.state.is_boosting,
+                    boosting_time: c.state.boosting_time,
+                    is_supersonic: c.state.is_supersonic,
+                    supersonic_time: c.state.supersonic_time,
+                    handbrake_val: c.state.handbrake_val,
+                    is_auto_flipping: c.state.is_auto_flipping,
+                    auto_flip_timer: c.state.auto_flip_timer,
+                    auto_flip_torque_scale: c.state.auto_flip_torque_scale,
+                    world_contact_normal: None,
+                    car_contact: None,
+                    is_demoed: c.state.is_demoed,
+                    demo_respawn_timer: c.state.demo_respawn_timer,
+                    ball_hit_info: None,
+                    last_controls: flat_rs::CarControls {
+                        throttle: c.state.last_controls.throttle,
+                        steer: c.state.last_controls.steer,
+                        pitch: c.state.last_controls.pitch,
+                        yaw: c.state.last_controls.yaw,
+                        roll: c.state.last_controls.roll,
+                        jump: c.state.last_controls.jump,
+                        boost: c.state.last_controls.boost,
+                        handbrake: c.state.last_controls.handbrake,
+                    },
+                }),
+                config: flat_rs::CarConfig {
+                    hitbox_size: to_flat_vec3(c.config.hitbox_size),
+                    hitbox_pos_offset: to_flat_vec3(c.config.hitbox_pos_offset),
+                    front_wheels: flat_rs::WheelPairConfig {
+                        wheel_radius: c.config.front_wheels.wheel_radius,
+                        suspension_rest_length: c.config.front_wheels.suspension_rest_length,
+                        connection_point_offset: to_flat_vec3(c.config.front_wheels.connection_point_offset),
+                    },
+                    back_wheels: flat_rs::WheelPairConfig {
+                        wheel_radius: c.config.back_wheels.wheel_radius,
+                        suspension_rest_length: c.config.back_wheels.suspension_rest_length,
+                        connection_point_offset: to_flat_vec3(c.config.back_wheels.connection_point_offset),
+                    },
+                    three_wheels: c.config.three_wheels,
+                    dodge_deadzone: c.config.dodge_deadzone,
+                },
+            }
+        }).collect()),
+        ball: flat_rs::BallState {
+            physics: flat_rs::PhysState {
+                pos: to_flat_vec3(state.ball.pos),
+                rot_mat: to_flat_mat3(state.ball.rot_mat),
+                vel: to_flat_vec3(state.ball.vel),
+                ang_vel: to_flat_vec3(state.ball.ang_vel),
+            },
+            hs_info: flat_rs::HeatseekerInfo {
+                y_target_dir: state.ball.hs_info.y_target_dir,
+                cur_target_speed: state.ball.hs_info.cur_target_speed,
+                time_since_hit: state.ball.hs_info.time_since_hit,
+            },
+            ds_info: flat_rs::DropshotInfo {
+                charge_level: state.ball.ds_info.charge_level,
+                accumulated_hit_force: state.ball.ds_info.accumulated_hit_force,
+                y_target_dir: state.ball.ds_info.y_target_dir,
+                has_damaged: state.ball.ds_info.has_damaged,
+                last_damage_tick: state.ball.ds_info.last_damage_tick,
+            },
+        },
+        pads: None,
+        tiles: None,
+    }
+}
+

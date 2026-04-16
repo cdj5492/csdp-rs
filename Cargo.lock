@@ -113,6 +113,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
+name = "array-init-cursor"
+version = "0.2.1"
+source = "git+https://github.com/swz-git/planus?rev=a0b1fbf#a0b1fbf28458389e2d3dc7598d257231103d9497"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -787,6 +792,7 @@ dependencies = [
  "intel-mkl-src",
  "log",
  "nokhwa",
+ "planus",
  "rand 0.8.5",
  "ratatui",
  "rocketsim_rs",
@@ -1749,6 +1755,8 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.1.5",
 ]
 
@@ -2976,6 +2984,15 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
+
+[[package]]
+name = "planus"
+version = "1.1.1"
+source = "git+https://github.com/swz-git/planus?rev=a0b1fbf#a0b1fbf28458389e2d3dc7598d257231103d9497"
+dependencies = [
+ "array-init-cursor",
+ "hashbrown 0.15.5",
+]
 
 [[package]]
 name = "portable-atomic"
