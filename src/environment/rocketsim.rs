@@ -27,6 +27,10 @@ enum UdpPacketTypes {
 
 static INIT_ROCKETSIM: Once = Once::new();
 
+static NEXT_ENV_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static VISUALIZER_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(std::usize::MAX);
+static LAST_VIS_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 use std::cell::RefCell;
 
 pub struct RocketSimEnvironment {
@@ -39,6 +43,7 @@ pub struct RocketSimEnvironment {
     prev_dist_to_ball: f32,
     prev_dist_ball_to_net: f32,
     builder: RefCell<planus::Builder>,
+    id: usize,
 }
 
 // Implement Clone is required by our trait but Arena UniquePtr can't be cloned.
@@ -54,6 +59,8 @@ impl RocketSimEnvironment {
         INIT_ROCKETSIM.call_once(|| {
             rocketsim_rs::init(None, true);
         });
+
+        let id = NEXT_ENV_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         let mut arena = Arena::new(GameMode::Soccar, ArenaConfig::default(), 120);
         let car_id = arena.pin_mut().add_car(Team::Blue, CarConfig::octane());
@@ -77,6 +84,7 @@ impl RocketSimEnvironment {
             prev_dist_to_ball: 0.0,
             prev_dist_ball_to_net: 0.0,
             builder: RefCell::new(planus::Builder::new()),
+            id,
         };
         
         env.reset().unwrap();
@@ -137,6 +145,19 @@ impl RocketSimEnvironment {
     }
 
     fn send_state_to_rlviser(&self) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        
+        let mut current_vis = VISUALIZER_ID.load(std::sync::atomic::Ordering::Relaxed);
+        let last_time = LAST_VIS_TIME.load(std::sync::atomic::Ordering::Relaxed);
+        
+        if current_vis == std::usize::MAX || current_vis == self.id || now.saturating_sub(last_time) > 100 {
+            VISUALIZER_ID.store(self.id, std::sync::atomic::Ordering::Relaxed);
+            LAST_VIS_TIME.store(now, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            return;
+        }
+
         let mut arena = self.arena.borrow_mut();
         let game_state = arena.pin_mut().get_game_state();
 
@@ -307,6 +328,15 @@ impl Environment for RocketSimEnvironment {
         }
         self.send_state_to_rlviser();
         Ok(())
+    }
+}
+
+impl Drop for RocketSimEnvironment {
+    fn drop(&mut self) {
+        let current_vis = VISUALIZER_ID.load(std::sync::atomic::Ordering::Relaxed);
+        if current_vis == self.id {
+            VISUALIZER_ID.store(std::usize::MAX, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 

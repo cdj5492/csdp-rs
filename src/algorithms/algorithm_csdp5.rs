@@ -85,9 +85,8 @@ impl AlgorithmCSDP5 {
         if !dir.exists() {
             std::fs::create_dir_all(dir)?;
         }
-        let model_dir = dir.join("model");
-        std::fs::create_dir_all(&model_dir)?;
-        self.model.save(&model_dir)?;
+        let model_file = dir.join("model.safetensors");
+        self.model.save(&model_file)?;
 
         let state = TrainingState {
             buffer: self.buffer.clone(),
@@ -106,8 +105,8 @@ impl AlgorithmCSDP5 {
         &mut self,
         dir: &std::path::Path,
     ) -> Result<Vec<(usize, f32)>, Box<dyn Error>> {
-        let model_dir = dir.join("model");
-        self.model.load(&model_dir)?;
+        let model_file = dir.join("model.safetensors");
+        self.model.load(&model_file)?;
 
         let json = std::fs::read_to_string(dir.join("training_state.json"))?;
         let state: TrainingState = serde_json::from_str(&json)?;

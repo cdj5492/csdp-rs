@@ -156,7 +156,7 @@ impl AlgorithmFFMulti2 {
         Ok(Self {
             main_model,
             target_model,
-            n_episodes: 1000,
+            n_episodes: 100,
             n_steps_per_episode: 500,
             epochs_per_episode,
             device,
@@ -270,7 +270,7 @@ fn normalize_state(raw: &[f64]) -> Vec<f32> {
             4096.0, 5120.0, 2048.0, // car vel xyz
             2300.0, 2300.0, 2300.0, // car ang_vel xyz
             5.5, 5.5, 5.5, // car rotation matrix (9 elements, already [-1,1])
-            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, // boost amount
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,   // boost amount
             100.0, // boolean flags
             1.0, 1.0, 1.0,
         ];
