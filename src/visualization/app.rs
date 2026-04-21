@@ -8,7 +8,7 @@ use ratatui::{
     widgets::{
         canvas::{Canvas, Line as CanvasLine, Circle, Points},
         Block, Borders, Gauge, List, ListItem, Paragraph, ListState,
-        Chart, Axis, Dataset, GraphType, Tabs,
+        Chart, Axis, Dataset, GraphType, Tabs, BarChart,
     },
     Frame,
 };
@@ -136,6 +136,11 @@ impl NeuralNetworkVisualizerApp {
                     KeyCode::Char('l') => {
                         if let Ok(mut state) = self.vis_state.lock() {
                             state.load_requested = true;
+                        }
+                    }
+                    KeyCode::Char('o') => {
+                        if let Ok(mut state) = self.vis_state.lock() {
+                            state.sort_probabilities = !state.sort_probabilities;
                         }
                     }
                     KeyCode::Esc => {
@@ -315,7 +320,12 @@ impl NeuralNetworkVisualizerApp {
                     self.draw_details(f, main_chunks[1], &state.model_structure);
                 }
                 1 => {
-                    self.draw_env_state(f, chunks[2], &state);
+                    let env_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                        .split(chunks[2]);
+                    self.draw_env_state(f, env_chunks[0], &state);
+                    self.draw_model_probs(f, env_chunks[1], &state);
                 }
                 2 => {
                     let side_chunks = Layout::default()
@@ -372,6 +382,69 @@ impl NeuralNetworkVisualizerApp {
             }
         } else {
             let p = Paragraph::new("No Environment Data").block(Block::default().borders(Borders::ALL).title("Env State"));
+            f.render_widget(p, area);
+        }
+    }
+
+    fn draw_model_probs(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
+        if let Some(probs_vec) = &state.model_probabilities {
+            if probs_vec.is_empty() {
+                let p = Paragraph::new("No probabilities available")
+                    .block(Block::default().borders(Borders::ALL).title("Probability Distributions"));
+                f.render_widget(p, area);
+                return;
+            }
+
+            let num_charts = probs_vec.len();
+            let constraints = vec![Constraint::Percentage((100 / num_charts) as u16); num_charts];
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(constraints)
+                .split(area);
+
+            for (i, (name, probs)) in probs_vec.iter().enumerate() {
+                let mut display_data: Vec<(String, f32)> = probs.iter()
+                    .enumerate()
+                    .map(|(c, &val)| (format!("{:02}", c), val))
+                    .collect();
+
+                if state.sort_probabilities {
+                    display_data.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                }
+
+                // Automatically calculate width needed
+                let bar_count = display_data.len() as u16;
+                let bar_data: Vec<(&str, u64)> = display_data.iter()
+                    .map(|(label, val)| (label.as_str(), (*val * 100.0) as u64))
+                    .collect();
+
+                let avail_width = chunks[i].width.saturating_sub(2);
+                let width_per_bar = avail_width.checked_div(bar_count.max(1)).unwrap_or(1);
+                
+                let (bw, gap) = if width_per_bar >= 4 {
+                    (3, 1)
+                } else if width_per_bar == 3 {
+                    (2, 1)
+                } else if width_per_bar == 2 {
+                    (1, 1)
+                } else {
+                    (1, 0)
+                };
+
+                let barchart = BarChart::default()
+                    .block(Block::default().title(name.as_str()).borders(Borders::ALL))
+                    .data(&bar_data)
+                    .bar_width(bw)
+                    .bar_gap(gap)
+                    .max(100)
+                    .value_style(Style::default().fg(Color::Yellow))
+                    .label_style(Style::default().fg(Color::White))
+                    .bar_style(Style::default().fg(Color::Cyan));
+
+                f.render_widget(barchart, chunks[i]);
+            }
+        } else {
+            let p = Paragraph::new("No Model Data").block(Block::default().borders(Borders::ALL).title("Probability Distributions"));
             f.render_widget(p, area);
         }
     }
@@ -662,6 +735,7 @@ impl NeuralNetworkVisualizerApp {
             Line::from("  [/]     Decrease/Increase Simulation Throttling Delay"),
             Line::from("  s       Save Model Checkpoint"),
             Line::from("  l       Load Local Checkpoint"),
+            Line::from("  o       Toggle Sorting Model Probabilities"),
             Line::from("  <-/->   Select / Cycle Layer"),
             Line::from("  Up/Down Scroll Execution Logs"),
         ];

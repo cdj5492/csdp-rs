@@ -22,6 +22,8 @@ pub struct VisualizationState {
     pub load_requested: bool,
     pub delay_ms: u64,
     pub render_trail: Vec<(f64, f64)>,
+    pub model_probabilities: Option<Vec<(String, Vec<f32>)>>,
+    pub sort_probabilities: bool,
 }
 
 /// Structure of the model for visualization
@@ -85,6 +87,8 @@ impl VisualizationState {
             load_requested: false,
             delay_ms: 0,
             render_trail: Vec::new(),
+            model_probabilities: None,
+            sort_probabilities: false,
         }
     }
 }

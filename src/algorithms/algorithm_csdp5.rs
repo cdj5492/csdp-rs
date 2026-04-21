@@ -201,6 +201,8 @@ impl Algorithm for AlgorithmCSDP5 {
                 }
 
                 let mut best_actions = vec![0; n_envs];
+                let mut env0_return_probs = Vec::new();
+                let mut env0_action_probs = Vec::new();
 
                 if self.buffer.is_empty() || rng.r#gen::<f32>() < epsilon {
                     for i in 0..n_envs {
@@ -275,6 +277,26 @@ impl Algorithm for AlgorithmCSDP5 {
                             }
                         }
                         best_actions[env_idx] = best_a;
+
+                        if env_idx == 0 {
+                            let start_idx = best_a * self.num_classes;
+                            let end_idx = start_idx + self.num_classes;
+                            let class_scores = &scores[start_idx..end_idx];
+                            let max_g = class_scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let mut exp_sum = 0.0;
+                            let mut exps = Vec::with_capacity(self.num_classes);
+                            for &g in class_scores {
+                                let e_val = ((g - max_g) / tau).exp();
+                                exp_sum += e_val;
+                                exps.push(e_val);
+                            }
+                            env0_return_probs = exps.iter().map(|e| e / exp_sum).collect();
+
+                            let max_a_exp = exp_vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let a_exps: Vec<f32> = exp_vals.iter().map(|&v| ((v - max_a_exp) / tau).exp()).collect();
+                            let a_sum: f32 = a_exps.iter().sum();
+                            env0_action_probs = a_exps.iter().map(|e| e / a_sum).collect();
+                        }
                     }
                 }
 
@@ -300,6 +322,13 @@ impl Algorithm for AlgorithmCSDP5 {
                             state.render_trail.push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
+
+                        if !env0_return_probs.is_empty() {
+                            state.model_probabilities = Some(vec![
+                                ("Action Distribution".to_string(), env0_action_probs.clone()),
+                                ("Return Probabilities".to_string(), env0_return_probs.clone()),
+                            ]);
+                        }
                     }
                     
                     let mut should_break = false;
@@ -354,6 +383,7 @@ impl Algorithm for AlgorithmCSDP5 {
             // SNN Multi-Class Training
             let training_start = Instant::now();
             self.model.enable_learning();
+            let mut epoch_spike_history = None;
 
             if self.buffer.len() >= 1000 && self.bounds_initialized {
                 // Train batch
@@ -385,8 +415,10 @@ impl Algorithm for AlgorithmCSDP5 {
                 
                 let y = Tensor::from_vec(batch_classes, (1, batch_size), &self.device)?;
 
+                let record_layer_id = vis_state.as_ref().and_then(|vs| vs.try_lock().ok().and_then(|s| s.selected_layer_id));
+
                 // Train the entire SNN for exactly batch_size using 40 timesteps!
-                self.model.train(&x, &y)?;
+                epoch_spike_history = self.model.train(&x, &y, record_layer_id)?;
 
                 total_epochs += 1;
             }
@@ -400,6 +432,16 @@ impl Algorithm for AlgorithmCSDP5 {
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
+
+                    if let Some(hist) = epoch_spike_history {
+                        state.epoch_spike_history = Some((episode, hist));
+                    }
+
+                    if self.buffer.len() >= 1000 && self.bounds_initialized {
+                        if let Ok(snapshot) = self.model.get_visualization_snapshot() {
+                            state.update_from_snapshot(snapshot);
+                        }
+                    }
                 }
             }
 

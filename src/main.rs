@@ -220,7 +220,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut algo = AlgorithmCSDP5::new(
             state_size,
             action_size,
-            vec![2000],
+            vec![1000, 256],
             dt,
             device.clone(),
             state_bounds.clone(),

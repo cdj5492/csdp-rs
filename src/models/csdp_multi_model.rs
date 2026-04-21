@@ -230,17 +230,28 @@ impl CSDPMultiModel {
         Ok(total_goodness)
     }
 
-    pub fn train(&mut self, x: &Tensor, label_classes: &Tensor) -> CandleResult<()> {
+    pub fn train(&mut self, x: &Tensor, label_classes: &Tensor, record_layer_id: Option<usize>) -> CandleResult<Option<Vec<Vec<f32>>>> {
         let x_t = x.transpose(0, 1)?.contiguous()?;
         let batch_size = x_t.dim(1)?;
         self.reset(batch_size)?;
         
+        let mut history = if record_layer_id.is_some() { Some(Vec::with_capacity(self.timesteps)) } else { None };
+
         // Let the STDP rules train based on MultiClassModSignal over T timesteps
         for _ in 0..self.timesteps {
             self.step(&x_t, Some(label_classes))?;
+
+            if let (Some(id), Some(hist)) = (record_layer_id, history.as_mut()) {
+                if let Some(layer) = self.layers.get(id) {
+                    let output = layer.output()?; // shape: (size, batch_size)
+                    let output_b0 = output.narrow(1, 0, 1)?; // take first item in batch
+                    let spikes = output_b0.flatten_all()?.to_vec1::<f32>()?;
+                    hist.push(spikes);
+                }
+            }
         }
         
-        Ok(())
+        Ok(history)
     }
 
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> CandleResult<()> {

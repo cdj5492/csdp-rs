@@ -481,6 +481,36 @@ impl Algorithm for AlgorithmFFMulti2 {
 
                 // ── Visualisation hooks ──
                 if let Some(ref vs) = vis_state {
+                    let mut main_probs = Vec::new();
+                    let mut target_probs = Vec::new();
+
+                    if let Some(&(ref state_f32, selected_action, _)) = episode_trajectories[0].last() {
+                        let mut input_vec = Vec::with_capacity(input_size);
+                        for j in 0..action_size {
+                            input_vec.push(if j == selected_action { ACTION_SCALE } else { 0.0 });
+                        }
+                        input_vec.extend(state_f32.iter());
+
+                        if let Ok(inf_tensor) = Tensor::from_vec(input_vec, (1, input_size), &self.device) {
+                            if let Ok(main_scores) = self.main_model.predict_scores(&[inf_tensor.clone()]) {
+                                if let Ok(main_flat) = main_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+                                    let main_max = main_flat.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                                    let main_exps: Vec<f32> = main_flat.iter().map(|&v| (v - main_max).exp()).collect();
+                                    let main_sum: f32 = main_exps.iter().sum();
+                                    main_probs = main_exps.iter().map(|v| v / main_sum).collect();
+                                }
+                            }
+                            if let Ok(target_scores) = self.target_model.predict_scores(&[inf_tensor]) {
+                                if let Ok(target_flat) = target_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+                                    let target_max = target_flat.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                                    let target_exps: Vec<f32> = target_flat.iter().map(|&v| (v - target_max).exp()).collect();
+                                    let target_sum: f32 = target_exps.iter().sum();
+                                    target_probs = target_exps.iter().map(|v| v / target_sum).collect();
+                                }
+                            }
+                        }
+                    }
+
                     if let Ok(mut state) = vs.try_lock() {
                         let env_state = envs[0].get_state()?;
                         if state.runtime_stats.epoch != episode {
@@ -492,6 +522,13 @@ impl Algorithm for AlgorithmFFMulti2 {
                                 .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
+                        
+                        if !main_probs.is_empty() && !target_probs.is_empty() {
+                            state.model_probabilities = Some(vec![
+                                ("Main P(ret|s,a)".to_string(), main_probs),
+                                ("Target P(ret|s,a)".to_string(), target_probs),
+                            ]);
+                        }
                     }
                 }
 
