@@ -58,7 +58,7 @@ impl CSDPMultiModel {
                 size,
                 trace_tau,
                 1.0, // max_z roughly
-                (size as f32) / (num_classes as f32) * 0.5, // approximate threshold depending on chunk size
+                0.3, // threshold is compared to normalized mean goodness [0..1]
                 num_classes,
                 device,
             )?);
@@ -203,28 +203,36 @@ impl CSDPMultiModel {
         let batch_size = input_tensor.dim(1)?;
         self.reset(batch_size)?;
         
+        let was_learning = self.is_learning;
+        self.disable_learning();
+        
+        let mut total_goodness = Tensor::zeros((batch_size, self.num_classes), candle_core::DType::F32, &self.device)?;
+        
         // We evaluate T timesteps.
         for _ in 0..self.timesteps {
             self.step(&input_tensor, None)?;
+
+            // Accumulate instantaneous goodness at each timestep
+            for layer in self.layers.iter().skip(1) { // Skip input layer
+                let h = layer.output()?; // Shape: (size, batch_size)
+                let h_t = h.transpose(0, 1)?.contiguous()?; // (batch_size, size)
+                
+                let chunks = h_t.chunk(self.num_classes, 1)?;
+                let mut layer_goodnesses = Vec::new();
+                for chunk in chunks {
+                    let g = chunk.sqr()?.mean_keepdim(1)?; // (batch_size, 1)
+                    layer_goodnesses.push(g);
+                }
+                let layer_g_tensor = Tensor::cat(&layer_goodnesses, 1)?; // (batch_size, num_classes)
+                total_goodness = total_goodness.broadcast_add(&layer_g_tensor)?;
+            }
         }
         
-        // Now calculate Goodness scores per chunk across all hidden layers
-        let mut total_goodness = Tensor::zeros((batch_size, self.num_classes), candle_core::DType::F32, &self.device)?;
+        // Average the goodness across the timesteps
+        let total_goodness = (total_goodness / self.timesteps as f64)?;
         
-        for layer in self.layers.iter().skip(1) { // Skip input layer
-            // Get output trace from the layer's mod signal wrapper?? We don't have direct access.
-            // But we CAN use the layer's final activity (flattened) and chunk it.
-            let h = layer.output()?; // Shape: (size, batch_size)
-            let h_t = h.transpose(0, 1)?.contiguous()?; // (batch_size, size)
-            
-            let chunks = h_t.chunk(self.num_classes, 1)?;
-            let mut layer_goodnesses = Vec::new();
-            for chunk in chunks {
-                let g = chunk.sqr()?.mean_keepdim(1)?; // (batch_size, 1)
-                layer_goodnesses.push(g);
-            }
-            let layer_g_tensor = Tensor::cat(&layer_goodnesses, 1)?; // (batch_size, num_classes)
-            total_goodness = total_goodness.broadcast_add(&layer_g_tensor)?;
+        if was_learning {
+            self.enable_learning();
         }
         
         Ok(total_goodness)

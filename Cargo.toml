@@ -21,6 +21,10 @@ path = "src/tools/teleoperate.rs"
 name = "test_mnist_ff"
 path = "src/tools/mnist_ff_multi.rs"
 
+[[bin]]
+name = "test_distributional"
+path = "src/tools/test_distributional.rs"
+
 [dependencies]
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.2-alpha.2", features = [
   "cuda",
