@@ -167,7 +167,7 @@ impl Algorithm for AlgorithmCSDP5 {
 
         // Episode range
         let mut episode = self.start_episode + 1;
-        let mut episode_end = self.start_episode + self.n_episodes;
+        let mut episode_end = self.start_episode.saturating_add(self.n_episodes);
 
         while episode <= episode_end {
             if let Some(ref vs) = vis_state
@@ -500,7 +500,7 @@ impl Algorithm for AlgorithmCSDP5 {
                                         s.epoch_rewards = epoch_rewards;
                                     }
                                 episode = self.start_episode;
-                                episode_end = self.start_episode + self.n_episodes;
+                                episode_end = self.start_episode.saturating_add(self.n_episodes);
                                 log::info!("Manual load succeeded. Continuing training.");
                             }
                             Err(e) => {

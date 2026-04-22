@@ -15,9 +15,9 @@ const NUM_ENVS: usize = 16;
 const ROLLOUT_STEPS: usize = 512;
 const PPO_EPOCHS: usize = 2;
 // Entropy coefficient applied to each policy layer's train_binary call (RLGymPPO pattern).
-// Maximizing action-distribution entropy prevents collapse without requiring
-// explicit exploration noise.
-const POLICY_ENT_COEF: f64 = 0.005;
+// Kept low so the policy can concentrate on its best actions after learning;
+// the epsilon-greedy warmup provides early exploration instead.
+const POLICY_ENT_COEF: f64 = 0.001;
 const GAMMA: f32 = 0.99;
 const GAE_LAMBDA: f32 = 0.95;
 const AUTO_SAVE_INTERVAL: usize = 25;
@@ -26,10 +26,11 @@ const BOUNDS_EMA_ALPHA: f32 = 0.1;
 const MIN_RETURN_RANGE: f32 = 2.0;
 const BOUNDS_LOW_PERCENTILE: f32 = 0.05;
 const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
-// Epsilon-greedy exploration schedule.
-const EPSILON_START: f32 = 0.4;
-const EPSILON_END: f32 = 0.05;
-const EPSILON_DECAY_EPISODES: f32 = 300.0;
+// Epsilon-greedy exploration schedule. Epsilon decays to 0 so that once the
+// policy has learned, action selection is pure argmax — committed, non-jittery.
+const EPSILON_START: f32 = 0.3;
+const EPSILON_END: f32 = 0.0;
+const EPSILON_DECAY_EPISODES: f32 = 200.0;
 // Clamp applied to z-scored goodness before softmax. Must be large enough that
 // the z-scores of reinforced actions are NOT truncated, otherwise goodness
 // differences between similar-quality actions collapse to zero and all appear
@@ -142,11 +143,14 @@ fn sync_model(src: &FFMultiModel, dst: &FFMultiModel) -> Result<(), Box<dyn Erro
 fn normalize_state(raw: &[f64]) -> Vec<f32> {
     if raw.len() == 31 {
         let scales: [f32; 31] = [
-            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0, 6.0, 6.0, 6.0, 4096.0, 5120.0,
-            2048.0, 2300.0, 2300.0, 2300.0, 5.5, 5.5, 5.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-            1.0, 1.0, 100.0, 1.0, 1.0, 1.0,
+            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0, 6.0, 6.0, 6.0, 4096.0, 5120.0, 2048.0,
+            2300.0, 2300.0, 2300.0, 5.5, 5.5, 5.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            100.0, 1.0, 1.0, 1.0,
         ];
-        raw.iter().zip(scales.iter()).map(|(&v, &s)| (v as f32) / s).collect()
+        raw.iter()
+            .zip(scales.iter())
+            .map(|(&v, &s)| (v as f32) / s)
+            .collect()
     } else {
         raw.iter().map(|&x| (x as f32) / 50.0).collect()
     }
@@ -175,7 +179,7 @@ impl AlgorithmFFPPO {
         // Policy dims: choose neurons-per-class based on action space size,
         // then round each hidden size up to a multiple of action_size so the
         // FFMultiLayer chunk invariant is satisfied.
-        let neurons_per_class = if action_size > 20 { 6usize } else { 64 };
+        let neurons_per_class = if action_size > 20 { 32usize } else { 64 };
         let base = neurons_per_class * action_size;
         let policy_hidden = [base * 2, base, base / 2];
         let mut policy_dims = vec![state_size];
@@ -233,10 +237,16 @@ impl AlgorithmFFPPO {
             completed_episode,
             epoch_rewards: epoch_rewards.to_vec(),
         };
-        std::fs::write(dir.join("training_state.json"), serde_json::to_string(&state)?)?;
+        std::fs::write(
+            dir.join("training_state.json"),
+            serde_json::to_string(&state)?,
+        )?;
         log::info!(
             "Checkpoint saved to {:?} (episode {}, return range [{:.4}, {:.4}])",
-            dir, completed_episode, self.min_return, self.max_return
+            dir,
+            completed_episode,
+            self.min_return,
+            self.max_return
         );
         Ok(())
     }
@@ -256,7 +266,10 @@ impl AlgorithmFFPPO {
         self.start_episode = state.completed_episode;
         log::info!(
             "Checkpoint loaded from {:?} (resuming after episode {}, return range [{:.4}, {:.4}])",
-            dir, state.completed_episode, self.min_return, self.max_return
+            dir,
+            state.completed_episode,
+            self.min_return,
+            self.max_return
         );
         Ok(state.epoch_rewards)
     }
@@ -281,7 +294,7 @@ impl Algorithm for AlgorithmFFPPO {
         let mut rng = rand::thread_rng();
 
         let mut episode = self.start_episode + 1;
-        let mut episode_end = self.start_episode + self.n_episodes;
+        let mut episode_end = self.start_episode.saturating_add(self.n_episodes);
 
         let mut total_inference_time = Duration::new(0, 0);
         let mut total_inference_actions: usize = 0;
@@ -331,13 +344,10 @@ impl Algorithm for AlgorithmFFPPO {
                 for raw in &raw_states {
                     flat.extend(normalize_state(raw));
                 }
-                let state_tensor =
-                    Tensor::from_vec(flat, (NUM_ENVS, state_size), &self.device)?;
+                let state_tensor = Tensor::from_vec(flat, (NUM_ENVS, state_size), &self.device)?;
 
-                let policy_scores =
-                    self.policy_model.predict_scores(&[state_tensor.clone()])?;
-                let value_scores =
-                    self.value_model.predict_scores(&[state_tensor])?;
+                let policy_scores = self.policy_model.predict_scores(&[state_tensor.clone()])?;
+                let value_scores = self.value_model.predict_scores(&[state_tensor])?;
 
                 let policy_flat: Vec<f32> = policy_scores.flatten_all()?.to_vec1()?;
                 let value_flat: Vec<f32> = value_scores.flatten_all()?.to_vec1()?;
@@ -355,27 +365,24 @@ impl Algorithm for AlgorithmFFPPO {
                     let probs = goodness_to_probs(goodness);
 
                     let selected_action = if rng.r#gen::<f32>() < epsilon {
-                        // Random exploration to ensure diverse actions even after
-                        // partial policy collapse.
+                        // Random exploration during the warmup phase.
                         rng.gen_range(0..action_size)
                     } else {
-                        // Sample proportionally from the bounded policy distribution.
-                        let r: f32 = rng.r#gen::<f32>();
-                        let mut cumulative = 0.0f32;
-                        let mut sel = action_size - 1;
-                        for (a, &p) in probs.iter().enumerate() {
-                            cumulative += p;
-                            if r <= cumulative {
-                                sel = a;
-                                break;
-                            }
-                        }
-                        sel
+                        // Argmax: commit to the highest-goodness action.
+                        // Stochastic sampling from a near-uniform distribution causes
+                        // visible jitter — the agent cycles through equally-scored actions
+                        // every step. Argmax gives smooth, decisive behavior once learned.
+                        probs.iter()
+                            .enumerate()
+                            .max_by(|(_, a), (_, b)| {
+                                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
+                            })
+                            .map(|(i, _)| i)
+                            .unwrap_or(0)
                     };
 
                     let val_start = env_idx * self.num_value_classes;
-                    let val_goodness =
-                        &value_flat[val_start..val_start + self.num_value_classes];
+                    let val_goodness = &value_flat[val_start..val_start + self.num_value_classes];
                     let v_s = expected_value_from_goodness(
                         val_goodness,
                         self.min_return,
@@ -384,8 +391,7 @@ impl Algorithm for AlgorithmFFPPO {
                     );
 
                     let reward =
-                        envs[env_idx].evaluate_action(&raw_states[env_idx], selected_action)
-                            as f32;
+                        envs[env_idx].evaluate_action(&raw_states[env_idx], selected_action) as f32;
                     envs[env_idx].apply_action(selected_action)?;
 
                     raw_total_reward += reward;
@@ -449,8 +455,7 @@ impl Algorithm for AlgorithmFFPPO {
             }
             let bootstrap_tensor =
                 Tensor::from_vec(bootstrap_flat, (NUM_ENVS, state_size), &self.device)?;
-            let bootstrap_scores =
-                self.value_model.predict_scores(&[bootstrap_tensor])?;
+            let bootstrap_scores = self.value_model.predict_scores(&[bootstrap_tensor])?;
             let bootstrap_flat_scores: Vec<f32> = bootstrap_scores.flatten_all()?.to_vec1()?;
 
             let bootstrap_values: Vec<f32> = (0..NUM_ENVS)
@@ -572,18 +577,20 @@ impl Algorithm for AlgorithmFFPPO {
                         batch_advantages.push(all_advantages[i]);
                     }
 
-                    let states_tensor = Tensor::from_vec(
-                        flat_states,
-                        (n_total, state_size),
-                        &self.device,
+                    let states_tensor =
+                        Tensor::from_vec(flat_states, (n_total, state_size), &self.device)?;
+                    self.policy_model.train_policy(
+                        &states_tensor,
+                        &batch_actions,
+                        &batch_advantages,
                     )?;
-                    self.policy_model
-                        .train_policy(&states_tensor, &batch_actions, &batch_advantages)?;
                     total_training_calls += 1;
 
                     log::info!(
                         "Ep {} PPO epoch {}: policy binary update on {} transitions",
-                        episode, ppo_epoch, n_total
+                        episode,
+                        ppo_epoch,
+                        n_total
                     );
                 }
             }
@@ -624,7 +631,7 @@ impl Algorithm for AlgorithmFFPPO {
                                 s.epoch_rewards = epoch_rewards;
                             }
                             episode = self.start_episode;
-                            episode_end = self.start_episode + self.n_episodes;
+                            episode_end = self.start_episode.saturating_add(self.n_episodes);
                             log::info!("Manual load succeeded. Continuing training.");
                         }
                         Err(e) => log::error!("Manual load failed: {}", e),
@@ -656,7 +663,12 @@ impl Algorithm for AlgorithmFFPPO {
             };
             log::info!(
                 "[Episode {} Reward: {:.4}] Actions/sec: {:.1} | Train calls/sec: {:.2} | ReturnRange: [{:.4}, {:.4}]",
-                episode, avg_reward, inf_aps, train_ps, self.min_return, self.max_return
+                episode,
+                avg_reward,
+                inf_aps,
+                train_ps,
+                self.min_return,
+                self.max_return
             );
 
             episode += 1;

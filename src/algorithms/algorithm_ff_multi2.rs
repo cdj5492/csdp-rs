@@ -317,7 +317,7 @@ impl Algorithm for AlgorithmFFMulti2 {
 
         // Episode range: if resuming, start after the last completed episode.
         let mut episode = self.start_episode + 1;
-        let mut episode_end = self.start_episode + self.n_episodes;
+        let mut episode_end = self.start_episode.saturating_add(self.n_episodes);
 
         while episode <= episode_end {
             // ── early-exit on close ──
@@ -754,7 +754,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                                 // Jump the loop counter so training resumes properly
                                 // instead of continuing the old loop index over loaded data.
                                 episode = self.start_episode;
-                                episode_end = self.start_episode + self.n_episodes;
+                                episode_end = self.start_episode.saturating_add(self.n_episodes);
 
                                 log::info!("Manual load succeeded. Continuing training.");
                             }
