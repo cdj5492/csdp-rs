@@ -1,8 +1,8 @@
-use candle_core::{DType, Device, Tensor};
+use candle_core::{Device, Tensor};
 use custom_framework::models::ff_multi_model::FFMultiModel;
 use flate2::read::GzDecoder;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 use std::time::Instant;
 
@@ -22,8 +22,7 @@ fn download_if_needed(filename: &str) -> std::io::Result<()> {
         .args(["-sL", "-o", path.to_str().unwrap(), &url])
         .status()?;
     if !resp.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             format!("Failed to download {}", url),
         ));
     }

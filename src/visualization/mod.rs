@@ -142,11 +142,10 @@ impl VisualizationState {
     /// Save the epoch rewards (graph values) to a CSV file for later analysis
     pub fn save_graphs_to_csv(&self, path: &std::path::Path) -> std::io::Result<()> {
         use std::io::Write;
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
+        if let Some(parent) = path.parent()
+            && !parent.exists() {
                 std::fs::create_dir_all(parent)?;
             }
-        }
         let mut file = std::fs::File::create(path)?;
         writeln!(file, "epoch,reward")?;
         for (epoch, reward) in &self.epoch_rewards {

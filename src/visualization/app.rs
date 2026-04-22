@@ -8,7 +8,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Axis, BarChart, Block, Borders, Chart, Dataset, Gauge, GraphType, List, ListItem,
+        BarChart, Block, Borders, Gauge, List, ListItem,
         ListState, Paragraph, Tabs,
         canvas::{Canvas, Circle, Line as CanvasLine, Points},
     },
@@ -292,12 +292,11 @@ impl NeuralNetworkVisualizerApp {
         if let Ok(mut state) = vis_state.try_lock() {
             self.selected_layer_id = state.selected_layer_id;
 
-            if let Some((epoch, history)) = state.epoch_spike_history.take() {
-                if self.displayed_epoch != epoch {
+            if let Some((epoch, history)) = state.epoch_spike_history.take()
+                && self.displayed_epoch != epoch {
                     self.spike_history = history;
                     self.displayed_epoch = epoch;
                 }
-            }
 
             self.draw_header(f, chunks[0], &state);
 
@@ -381,11 +380,11 @@ impl NeuralNetworkVisualizerApp {
                             });
                         }
                         ctx.draw(&Points {
-                            coords: &[(gx as f64, grid_size - gy as f64)],
+                            coords: &[(gx, grid_size - gy)],
                             color: Color::Green,
                         });
                         ctx.draw(&Points {
-                            coords: &[(px as f64, grid_size - py as f64)],
+                            coords: &[(px, grid_size - py)],
                             color: Color::Yellow,
                         });
                     });
@@ -654,8 +653,8 @@ impl NeuralNetworkVisualizerApp {
 
     fn draw_raster(&self, f: &mut Frame, area: Rect, model: &ModelStructure) {
         let title = format!("Spike Raster (Epoch {})", self.displayed_epoch);
-        if let Some(layer_id) = self.selected_layer_id {
-            if let Some(layer) = model.layers.iter().find(|l| l.id == layer_id) {
+        if let Some(layer_id) = self.selected_layer_id
+            && let Some(layer) = model.layers.iter().find(|l| l.id == layer_id) {
                 if self.spike_history.is_empty() {
                     let p = Paragraph::new("Waiting for epoch data...")
                         .block(Block::default().borders(Borders::ALL).title(title));
@@ -702,7 +701,6 @@ impl NeuralNetworkVisualizerApp {
                 f.render_widget(chart, area);
                 return;
             }
-        }
 
         let p = Paragraph::new("Select a layer to view raster plot.")
             .block(Block::default().borders(Borders::ALL).title(title));
@@ -805,17 +803,15 @@ impl NeuralNetworkVisualizerApp {
             }
         } else {
             // Keep bounds in check if they delete themselves
-            if let Some(idx) = self.log_state.selected() {
-                if idx >= total_logs && total_logs > 0 {
+            if let Some(idx) = self.log_state.selected()
+                && idx >= total_logs && total_logs > 0 {
                     self.log_state.select(Some(total_logs - 1));
                 }
-            }
             // If they reach bottom, reset user_scrolled state to allow auto-scrolling
-            if let Some(idx) = self.log_state.selected() {
-                if total_logs > 0 && idx == total_logs - 1 {
+            if let Some(idx) = self.log_state.selected()
+                && total_logs > 0 && idx == total_logs - 1 {
                     self.user_scrolled = false;
                 }
-            }
         }
 
         let list = List::new(logs)

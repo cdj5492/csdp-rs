@@ -128,8 +128,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let tau_ff = 0.15;
             let tau_csdp = 0.002;
 
-            if let Ok(ff_scores) = ff.predict_scores(&[x_eval.clone()]) {
-                if let Ok(ff_flat) = ff_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+            if let Ok(ff_scores) = ff.predict_scores(std::slice::from_ref(&x_eval))
+                && let Ok(ff_flat) = ff_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
                     let max_v = ff_flat.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                     let exps: Vec<f32> = ff_flat
                         .iter()
@@ -151,9 +151,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         println!("FF_Probs: {:.2?}", &probs[15..35]);
                     }
                 }
-            }
-            if let Ok(csdp_scores) = csdp.predict_scores(&[x_eval.clone()]) {
-                if let Ok(csdp_flat) = csdp_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+            if let Ok(csdp_scores) = csdp.predict_scores(std::slice::from_ref(&x_eval))
+                && let Ok(csdp_flat) = csdp_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
                     if target == 50.0 {
                         println!("Raw CSDP Goodness: {:.4?}", &csdp_flat[15..35]);
                     }
@@ -178,7 +177,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                         println!("CSDP_Probs: {:.2?}", &probs[15..35]);
                     }
                 }
-            }
         }
         return Ok(());
     }
@@ -199,7 +197,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut csdp_probs = vec![0.0; num_classes];
     let mut ff_probs = vec![0.0; num_classes];
 
-    let x_tensor = Tensor::from_vec(vec![1.0], (1, 1), &device)?;
+    let _x_tensor = Tensor::from_vec(vec![1.0], (1, 1), &device)?;
 
     loop {
         terminal.draw(|f| {
@@ -268,8 +266,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         })?;
 
         let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-        if event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
+        if event::poll(timeout)?
+            && let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => break,
                     KeyCode::Char(' ') => {
@@ -278,7 +276,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     _ => {}
                 }
             }
-        }
 
         if last_tick.elapsed() >= tick_rate {
             last_tick = Instant::now();
@@ -320,8 +317,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Evaluate on current_target
             let x_eval = Tensor::from_vec(encode_value(current_target), (1, input_size), &device)?;
 
-            if let Ok(ff_scores) = ff.predict_scores(&[x_eval.clone()]) {
-                if let Ok(ff_flat) = ff_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+            if let Ok(ff_scores) = ff.predict_scores(std::slice::from_ref(&x_eval))
+                && let Ok(ff_flat) = ff_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
                     let max_v = ff_flat.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                     let tau_ff = 0.15; // Makes FF much more narrow and peaky
                     let exps: Vec<f32> = ff_flat
@@ -331,10 +328,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let sum: f32 = exps.iter().sum();
                     ff_probs = exps.iter().map(|v| v / sum).collect();
                 }
-            }
 
-            if let Ok(csdp_scores) = csdp.predict_scores(&[x_eval.clone()]) {
-                if let Ok(csdp_flat) = csdp_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
+            if let Ok(csdp_scores) = csdp.predict_scores(std::slice::from_ref(&x_eval))
+                && let Ok(csdp_flat) = csdp_scores.flatten_all().and_then(|t| t.to_vec1::<f32>()) {
                     let max_v = csdp_flat.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                     let tau_csdp = 0.15; // CSDP goodnesses are bounded by 1.0, difference is smaller
                     let exps: Vec<f32> = csdp_flat
@@ -344,7 +340,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let sum: f32 = exps.iter().sum();
                     csdp_probs = exps.iter().map(|v| v / sum).collect();
                 }
-            }
         }
     }
 

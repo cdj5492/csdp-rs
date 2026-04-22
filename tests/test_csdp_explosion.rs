@@ -38,13 +38,13 @@ fn test_investigate_csdp_explosion() {
     let mut pre_activity = Tensor::ones((pre_size, 1), DType::F32, &device).unwrap();
 
     let dt = 0.1;
-    let lambda_d = 0.00005f32; // same as inside update_weights
+    let _lambda_d = 0.00005f32; // same as inside update_weights
 
     println!("Starting simulation with weights near zero...");
 
     for epoch in 0..1000 {
         // Evaluate what happens over timesteps.
-        for t in 0..40 {
+        for _t in 0..40 {
             // Suppose post_layer spikes slightly, pre_layer spikes slightly
             // This is a dummy mod_signal simulation.
             // The exact bug is mathematically reproducing the tensor operations

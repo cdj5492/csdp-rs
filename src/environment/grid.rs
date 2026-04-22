@@ -10,6 +10,12 @@ pub struct GridEnvironment {
     goal_y: i32,
 }
 
+impl Default for GridEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GridEnvironment {
     pub fn new() -> Self {
         let mut rng = rand::thread_rng();

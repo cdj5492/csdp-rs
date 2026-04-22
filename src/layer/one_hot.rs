@@ -72,7 +72,7 @@ impl Layer for OneHotLayer {
 
     fn add_input(&mut self, input: &Tensor) -> CandleResult<()> {
         // If input size matches number of variables, perform expansion
-        if input.dims().len() >= 1 && input.dims()[0] == self.bounds.len() {
+        if !input.dims().is_empty() && input.dims()[0] == self.bounds.len() {
             let batch_size = input.dims().get(1).copied().unwrap_or(1);
 
             // Reformat into 2D if it's not (e.g. 1D tensor)

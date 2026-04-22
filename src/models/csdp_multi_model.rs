@@ -167,7 +167,7 @@ impl CSDPMultiModel {
             let pre_layer_id = syn_conn.metadata.pre_layer;
             let post_layer_id = syn_conn.metadata.post_layer;
             let pre_act = self.layers[pre_layer_id].output()?;
-            let post_input = syn_conn.synapse.forward(&pre_act)?;
+            let post_input = syn_conn.synapse.forward(pre_act)?;
             self.layers[post_layer_id].add_input(&post_input)?;
         }
 
@@ -267,14 +267,13 @@ impl CSDPMultiModel {
         for _ in 0..self.timesteps {
             self.step(&x_t, Some(label_classes))?;
 
-            if let (Some(id), Some(hist)) = (record_layer_id, history.as_mut()) {
-                if let Some(layer) = self.layers.get(id) {
+            if let (Some(id), Some(hist)) = (record_layer_id, history.as_mut())
+                && let Some(layer) = self.layers.get(id) {
                     let output = layer.output()?; // shape: (size, batch_size)
                     let output_b0 = output.narrow(1, 0, 1)?; // take first item in batch
                     let spikes = output_b0.flatten_all()?.to_vec1::<f32>()?;
                     hist.push(spikes);
                 }
-            }
         }
 
         Ok(history)

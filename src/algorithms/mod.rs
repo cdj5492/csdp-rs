@@ -9,6 +9,7 @@ pub mod algorithm_ff3;
 pub mod algorithm_ff4;
 pub mod algorithm_ff_multi1;
 pub mod algorithm_ff_multi2;
+pub mod algorithm_ff_ppo;
 pub mod algorithm_ffsac;
 
 pub use algorithm_csdp1::Algorithm1;

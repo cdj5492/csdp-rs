@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop)]
 use super::Algorithm;
 use crate::environment::Environment;
 use crate::models::ff_multi_model::FFMultiModel;
@@ -146,8 +147,8 @@ impl Algorithm for AlgorithmFFMulti1 {
                     e.apply_action(selected_action)?;
                 }
 
-                if let Some(ref vis_state_arc) = vis_state {
-                    if let Ok(mut state) = vis_state_arc.try_lock() {
+                if let Some(ref vis_state_arc) = vis_state
+                    && let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = envs[0].get_state()?;
                         if state.runtime_stats.epoch != episode {
                             state.render_trail.clear();
@@ -159,10 +160,9 @@ impl Algorithm for AlgorithmFFMulti1 {
                         }
                         state.environment_state = Some(env_state);
                     }
-                }
 
                 if let Some(ref vis_state_arc) = vis_state {
-                    let mut should_break = false;
+                    let should_break = false;
                     loop {
                         let (is_paused, should_close, delay) = vis_state_arc
                             .try_lock()
@@ -188,15 +188,14 @@ impl Algorithm for AlgorithmFFMulti1 {
             let inference_elapsed = inference_start.elapsed();
             total_inference_time += inference_elapsed;
 
-            if let Some(ref vis_state_arc) = vis_state {
-                if let Ok(mut state) = vis_state_arc.try_lock() {
+            if let Some(ref vis_state_arc) = vis_state
+                && let Ok(mut state) = vis_state_arc.try_lock() {
                     let avg_reward =
                         raw_rewards.iter().sum::<f64>() as f32 / self.n_steps_per_episode as f32;
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
                 }
-            }
 
             log::info!("Training phase: Multi-Class FF Contrastive RL");
 
@@ -274,8 +273,8 @@ impl Algorithm for AlgorithmFFMulti1 {
         }
 
         log::info!("Training completed.");
-        if let Some(ref vis_state_arc) = vis_state {
-            if let Ok(state) = vis_state_arc.try_lock() {
+        if let Some(ref vis_state_arc) = vis_state
+            && let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");
                 if !checkpoints_dir.exists() {
                     let _ = std::fs::create_dir_all(checkpoints_dir);
@@ -283,7 +282,6 @@ impl Algorithm for AlgorithmFFMulti1 {
                 let csv_path = checkpoints_dir.join("epoch_rewards.csv");
                 let _ = state.save_graphs_to_csv(&csv_path);
             }
-        }
         Ok(())
     }
 }

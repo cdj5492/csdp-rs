@@ -6,13 +6,7 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 
 use custom_framework::algorithms;
-use custom_framework::dataset;
 use custom_framework::environment;
-use custom_framework::layer;
-use custom_framework::models;
-use custom_framework::robot;
-use custom_framework::synapse;
-use custom_framework::utils;
 use custom_framework::visualization;
 
 use algorithms::Algorithm;
@@ -23,6 +17,7 @@ use algorithms::algorithm_csdp4::Algorithm4;
 use algorithms::algorithm_csdp5::AlgorithmCSDP5;
 use algorithms::algorithm_ff_multi1::AlgorithmFFMulti1;
 use algorithms::algorithm_ff_multi2::AlgorithmFFMulti2;
+use algorithms::algorithm_ff_ppo::AlgorithmFFPPO;
 use algorithms::algorithm_ff1::AlgorithmFF1;
 use algorithms::algorithm_ff2::AlgorithmFF2;
 use algorithms::algorithm_ff3::AlgorithmFF3;
@@ -67,11 +62,10 @@ fn parse_args() -> (bool, String, String, bool, bool) {
     let resume = args.contains(&"--resume".to_string());
 
     let mut algo = "csdp2".to_string();
-    if let Some(idx) = args.iter().position(|r| r == "--algo") {
-        if idx + 1 < args.len() {
+    if let Some(idx) = args.iter().position(|r| r == "--algo")
+        && idx + 1 < args.len() {
             algo = args[idx + 1].clone();
         }
-    }
 
     (visualize, env_type, algo, infinite_epochs, resume)
 }
@@ -134,6 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo_ffsac_opt = None;
     let mut algo_ff_multi1_opt = None;
     let mut algo_ff_multi2_opt = None;
+    let mut algo_ff_ppo_opt: Option<(AlgorithmFFPPO, Option<Vec<(usize, f32)>>)> = None;
 
     let (n_episodes, snapshot_result, num_layers, num_synapses) = if algo_choice == "csdp1" {
         log::info!("Using Algorithm CSDP1");
@@ -360,6 +355,38 @@ fn main() -> Result<(), Box<dyn Error>> {
         let syns = 0;
         algo_ff_multi2_opt = Some((algo, restored_rewards));
         (eps, snap, layers, syns)
+    } else if algo_choice == "ff_ppo" {
+        log::info!("Using Algorithm FF PPO (PPO with Forward-Forward Models)");
+        let mut algo = AlgorithmFFPPO::new(state_size, action_size, device.clone())
+            .expect("Failed to create AlgorithmFFPPO");
+        if infinite_epochs {
+            algo.n_episodes = usize::MAX - 1;
+        }
+        let mut restored_rewards = None;
+        if resume {
+            let cp_dir = std::path::Path::new("checkpoints/ff_ppo");
+            if cp_dir.join("training_state.json").exists() {
+                match algo.load_checkpoint(cp_dir) {
+                    Ok(rewards) => {
+                        log::info!("Resumed from checkpoint (episode {})", algo.start_episode);
+                        restored_rewards = Some(rewards);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load checkpoint: {}. Starting fresh.", e);
+                    }
+                }
+            } else {
+                log::info!("No checkpoint found at {:?}. Starting fresh.", cp_dir);
+            }
+        }
+        let snap = Err(candle_core::Error::Msg(
+            "FF Model has no visualization".to_string(),
+        ));
+        let eps = algo.n_episodes;
+        let layers = algo.policy_model.layers.len() + algo.value_model.layers.len();
+        let syns = 0;
+        algo_ff_ppo_opt = Some((algo, restored_rewards));
+        (eps, snap, layers, syns)
     } else {
         panic!("Unknown algorithm choice: {}", algo_choice);
     };
@@ -417,13 +444,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else if let Some((mut algo, restored_rewards)) = algo_ff_multi2_opt {
         // If we resumed from a checkpoint, inject the restored reward history
         // into the visualization state so the graph picks up where it left off.
-        if let Some(rewards) = restored_rewards {
-            if let Some(ref vs) = vis_state_arg {
-                if let Ok(mut state) = vs.lock() {
+        if let Some(rewards) = restored_rewards
+            && let Some(ref vs) = vis_state_arg
+                && let Ok(mut state) = vs.lock() {
                     state.epoch_rewards = rewards;
                 }
-            }
-        }
+        algo.run(env.as_mut(), visualize, vis_state_arg)?;
+    } else if let Some((mut algo, restored_rewards)) = algo_ff_ppo_opt {
+        if let Some(rewards) = restored_rewards
+            && let Some(ref vs) = vis_state_arg
+                && let Ok(mut state) = vs.lock() {
+                    state.epoch_rewards = rewards;
+                }
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     }
 

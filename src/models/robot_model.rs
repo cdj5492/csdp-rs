@@ -3,10 +3,12 @@ use candle_core::{Device, Result as CandleResult, Tensor};
 use crate::models::Model;
 // wrapper around the general CSDP model specifically for controlling the robots
 
+#[allow(dead_code)]
 pub struct RobotModel {
     model: Model,
 }
 
+#[allow(dead_code)]
 impl RobotModel {
     pub fn new(num_hidden: usize, hidden_size: usize, device: &Device, dt: f32) -> Self {
         RobotModel {

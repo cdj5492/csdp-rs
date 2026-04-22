@@ -120,8 +120,8 @@ impl Algorithm for Algorithm1 {
                 std::thread::sleep(Duration::from_millis(100)); // give some time for action to take effect
 
                 // Update visualization state for environment
-                if let Some(ref vis_state_arc) = vis_state {
-                    if let Ok(mut state) = vis_state_arc.try_lock() {
+                if let Some(ref vis_state_arc) = vis_state
+                    && let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = env.get_state()?;
                         if state.runtime_stats.epoch != episode {
                             state.render_trail.clear();
@@ -133,7 +133,6 @@ impl Algorithm for Algorithm1 {
                         }
                         state.environment_state = Some(env_state);
                     }
-                }
 
                 // Sort actions by reward (ascending)
                 step_actions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
@@ -148,7 +147,7 @@ impl Algorithm for Algorithm1 {
 
                 // Visualization check during inference
                 if let Some(ref vis_state_arc) = vis_state {
-                    let mut should_break = false;
+                    let should_break = false;
                     loop {
                         let (is_paused, should_close, delay) = vis_state_arc
                             .try_lock()
@@ -175,8 +174,8 @@ impl Algorithm for Algorithm1 {
             total_inference_time += inference_elapsed;
 
             // Check if save or load was requested
-            if let Some(state_arc) = &vis_state {
-                if let Ok(mut lock) = state_arc.lock() {
+            if let Some(state_arc) = &vis_state
+                && let Ok(mut lock) = state_arc.lock() {
                     if lock.save_requested {
                         log::info!("Manual save requested...");
                         let checkpoints_dir = std::path::Path::new("checkpoints");
@@ -206,16 +205,12 @@ impl Algorithm for Algorithm1 {
                                 if path.is_file()
                                     && path.extension().and_then(|s| s.to_str())
                                         == Some("safetensors")
-                                {
-                                    if let Ok(metadata) = entry.metadata() {
-                                        if let Ok(modified) = metadata.modified() {
-                                            if modified > latest_time {
+                                    && let Ok(metadata) = entry.metadata()
+                                        && let Ok(modified) = metadata.modified()
+                                            && modified > latest_time {
                                                 latest_time = modified;
                                                 latest_file = Some(path);
                                             }
-                                        }
-                                    }
-                                }
                             }
 
                             if let Some(path) = latest_file {
@@ -236,14 +231,12 @@ impl Algorithm for Algorithm1 {
                         lock.load_requested = false;
                     }
                 }
-            }
 
             // Update epoch rewards
-            if let Some(ref vis_state_arc) = vis_state {
-                if let Ok(mut state) = vis_state_arc.try_lock() {
+            if let Some(ref vis_state_arc) = vis_state
+                && let Ok(mut state) = vis_state_arc.try_lock() {
                     state.epoch_rewards.push((episode, total_reward as f32));
                 }
-            }
 
             // Train on collected episode data
             self.model.enable_learning();
@@ -268,16 +261,15 @@ impl Algorithm for Algorithm1 {
                     self.model.reset(1)?;
                     for _ in 0..self.n_timesteps {
                         self.model.step(state_t, action_t)?;
-                        if let Some(layer_id) = record_layer {
-                            if let Ok(activity) = self.model.get_layer_activity(layer_id) {
+                        if let Some(layer_id) = record_layer
+                            && let Ok(activity) = self.model.get_layer_activity(layer_id) {
                                 spike_history.push(activity);
                             }
-                        }
                     }
 
                     // Update visualization snapshot every 20 iterations during training
-                    if let Some(ref vis_state_arc) = vis_state {
-                        if let Ok(mut state) = vis_state_arc.try_lock() {
+                    if let Some(ref vis_state_arc) = vis_state
+                        && let Ok(mut state) = vis_state_arc.try_lock() {
                             if !spike_history.is_empty() {
                                 state.epoch_spike_history = Some((episode, spike_history));
                             }
@@ -299,7 +291,6 @@ impl Algorithm for Algorithm1 {
                                 }
                             }
                         }
-                    }
                 }
             }
 
@@ -337,12 +328,11 @@ impl Algorithm for Algorithm1 {
             Err(e) => log::info!("Failed to save final model: {}", e),
         }
 
-        if let Some(ref vis_state_arc) = vis_state {
-            if let Ok(state) = vis_state_arc.try_lock() {
+        if let Some(ref vis_state_arc) = vis_state
+            && let Ok(state) = vis_state_arc.try_lock() {
                 let csv_path = checkpoints_dir.join("epoch_rewards.csv");
                 let _ = state.save_graphs_to_csv(&csv_path);
             }
-        }
 
         Ok(())
     }

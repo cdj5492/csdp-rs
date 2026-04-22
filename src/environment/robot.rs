@@ -62,8 +62,8 @@ impl Environment for RobotEnvironment {
         next_state[joint_idx] += sign * ACTION_DELTA;
 
         let mut dist_sq = 0.0;
-        for i in 0..NUM_JOINTS {
-            let diff = next_state[i] - self.target_position[i];
+        for (i, &val) in next_state.iter().enumerate().take(NUM_JOINTS) {
+            let diff = val - self.target_position[i];
             dist_sq += diff * diff;
         }
 

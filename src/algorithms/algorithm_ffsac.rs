@@ -68,15 +68,14 @@ impl Algorithm for AlgorithmFFSAC {
         let tau = 0.1f32;
 
         for episode in 1..=self.n_episodes {
-            if let Some(ref vis_state_arc) = vis_state {
-                if vis_state_arc
+            if let Some(ref vis_state_arc) = vis_state
+                && vis_state_arc
                     .try_lock()
                     .map(|s| s.should_close)
                     .unwrap_or(false)
                 {
                     return Ok(());
                 }
-            }
             log::info!("starting vectorized episode {} (x{})", episode, n_envs);
 
             for e in envs.iter_mut() {
@@ -181,8 +180,8 @@ impl Algorithm for AlgorithmFFSAC {
                     raw_rewards[env_idx] += step_reward;
                 }
 
-                if let Some(ref vis_state_arc) = vis_state {
-                    if let Ok(mut state) = vis_state_arc.try_lock() {
+                if let Some(ref vis_state_arc) = vis_state
+                    && let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = envs[0].get_state()?;
                         if state.runtime_stats.epoch != episode {
                             state.render_trail.clear();
@@ -194,21 +193,19 @@ impl Algorithm for AlgorithmFFSAC {
                         }
                         state.environment_state = Some(env_state);
                     }
-                }
             }
 
             let inference_elapsed = inference_start.elapsed();
             total_inference_time += inference_elapsed;
 
-            if let Some(ref vis_state_arc) = vis_state {
-                if let Ok(mut state) = vis_state_arc.try_lock() {
+            if let Some(ref vis_state_arc) = vis_state
+                && let Ok(mut state) = vis_state_arc.try_lock() {
                     let avg_reward = raw_rewards.iter().sum::<f64>() as f32
                         / (n_envs as f32 * self.n_steps_per_episode as f32);
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
                 }
-            }
 
             if self.buffer.len() > 50000 {
                 let drain_count = self.buffer.len() - 50000;
@@ -335,8 +332,8 @@ impl Algorithm for AlgorithmFFSAC {
         }
 
         log::info!("Training completed.");
-        if let Some(ref vis_state_arc) = vis_state {
-            if let Ok(state) = vis_state_arc.try_lock() {
+        if let Some(ref vis_state_arc) = vis_state
+            && let Ok(state) = vis_state_arc.try_lock() {
                 let checkpoints_dir = std::path::Path::new("checkpoints");
                 if !checkpoints_dir.exists() {
                     let _ = std::fs::create_dir_all(checkpoints_dir);
@@ -344,7 +341,6 @@ impl Algorithm for AlgorithmFFSAC {
                 let csv_path = checkpoints_dir.join("epoch_rewards.csv");
                 let _ = state.save_graphs_to_csv(&csv_path);
             }
-        }
         Ok(())
     }
 }

@@ -65,7 +65,7 @@ fn test_ac_csdp_actor_logic_learning() {
             for _ in 0..n_timesteps {
                 noise_sequence.push(Tensor::randn(0.0f32, 15.0f32, (2, 1), &device).unwrap());
             }
-            for t in 0..n_timesteps {
+            for noise in noise_sequence.iter().take(n_timesteps) {
                 for layer in model.actor.layers.iter_mut() {
                     layer.reset_input().unwrap();
                 }
@@ -87,7 +87,7 @@ fn test_ac_csdp_actor_logic_learning() {
                     .layers
                     .last_mut()
                     .unwrap()
-                    .add_input(&noise_sequence[t])
+                    .add_input(noise)
                     .unwrap();
                 for layer in model.actor.layers.iter_mut().skip(2) {
                     layer.step(dt).unwrap();
@@ -122,9 +122,7 @@ fn test_ac_csdp_actor_logic_learning() {
                     epoch, input_vec, z_base_vec, z_pert_vec
                 );
             }
-            if best_z[0] < best_z[1] && *class_idx == 1 {
-                total_accuracy += 1;
-            } else if best_z[0] > best_z[1] && *class_idx == 0 {
+            if (best_z[0] < best_z[1] && *class_idx == 1) || (best_z[0] > best_z[1] && *class_idx == 0) {
                 total_accuracy += 1;
             }
 
@@ -144,7 +142,7 @@ fn test_ac_csdp_actor_logic_learning() {
                 }
                 model.actor.reset(1).unwrap();
 
-                for t in 0..n_timesteps {
+                for noise in noise_sequence.iter().take(n_timesteps) {
                     for layer in model.actor.layers.iter_mut() {
                         layer.reset_input().unwrap();
                     }
@@ -167,7 +165,7 @@ fn test_ac_csdp_actor_logic_learning() {
                             .layers
                             .last_mut()
                             .unwrap()
-                            .add_input(&noise_sequence[t])
+                            .add_input(noise)
                             .unwrap();
                     }
                     for layer in model.actor.layers.iter_mut().skip(2) {

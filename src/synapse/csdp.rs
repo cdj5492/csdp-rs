@@ -53,7 +53,7 @@ impl SynapseOps for CSDP {
         let dw = mod_signal.matmul(&pre.t()?)?;
         let dw_avg = dw.affine(1.0 / (batch_size as f64), 0.0)?;
 
-        let delta = dw_avg.sub(&(self.weights.affine(lambda_d as f64, 0.0)?))?;
+        let delta = dw_avg.sub(&(self.weights.affine(lambda_d, 0.0)?))?;
 
         self.weights = self.weights.add(&delta)?;
 

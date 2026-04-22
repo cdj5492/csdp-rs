@@ -1,8 +1,9 @@
+#![allow(clippy::needless_range_loop)]
 use super::Algorithm;
 use crate::environment::Environment;
 use crate::models::csdp_multi_model::CSDPMultiModel;
 use crate::visualization::VisualizationState;
-use candle_core::{DType, Device, Tensor};
+use candle_core::{Device, Tensor};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -54,7 +55,7 @@ impl AlgorithmCSDP5 {
 
         let mut dims = vec![];
         for &h in &hidden_sizes {
-            let rounded = ((h + num_classes - 1) / num_classes) * num_classes;
+            let rounded = h.div_ceil(num_classes) * num_classes;
             dims.push(rounded);
         }
 
@@ -169,11 +170,10 @@ impl Algorithm for AlgorithmCSDP5 {
         let mut episode_end = self.start_episode + self.n_episodes;
 
         while episode <= episode_end {
-            if let Some(ref vs) = vis_state {
-                if vs.try_lock().map(|s| s.should_close).unwrap_or(false) {
+            if let Some(ref vs) = vis_state
+                && vs.try_lock().map(|s| s.should_close).unwrap_or(false) {
                     return Ok(());
                 }
-            }
 
             for e in envs.iter_mut() {
                 e.reset()?;
@@ -351,7 +351,7 @@ impl Algorithm for AlgorithmCSDP5 {
                         }
                     }
 
-                    let mut should_break = false;
+                    let should_break = false;
                     loop {
                         let (is_paused, should_close, delay) = vs_arc
                             .try_lock()
@@ -459,8 +459,8 @@ impl Algorithm for AlgorithmCSDP5 {
             total_training_time += training_start.elapsed();
 
             // Update Visualization
-            if let Some(ref vs_arc) = vis_state {
-                if let Ok(mut state) = vs_arc.try_lock() {
+            if let Some(ref vs_arc) = vis_state
+                && let Ok(mut state) = vs_arc.try_lock() {
                     let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / n_envs as f32;
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
@@ -470,17 +470,15 @@ impl Algorithm for AlgorithmCSDP5 {
                         state.epoch_spike_history = Some((episode, hist));
                     }
 
-                    if self.buffer.len() >= 1000 && self.bounds_initialized {
-                        if let Ok(snapshot) = self.model.get_visualization_snapshot() {
+                    if self.buffer.len() >= 1000 && self.bounds_initialized
+                        && let Ok(snapshot) = self.model.get_visualization_snapshot() {
                             state.update_from_snapshot(snapshot);
                         }
-                    }
                 }
-            }
 
             // Checkpointing
-            if let Some(ref vs) = vis_state {
-                if let Ok(mut state) = vs.try_lock() {
+            if let Some(ref vs) = vis_state
+                && let Ok(mut state) = vs.try_lock() {
                     if state.save_requested {
                         log::info!("Manual save requested...");
                         let epoch_rewards = state.epoch_rewards.clone();
@@ -497,11 +495,10 @@ impl Algorithm for AlgorithmCSDP5 {
                         drop(state);
                         match self.load_checkpoint(checkpoint_dir) {
                             Ok(epoch_rewards) => {
-                                if let Some(ref vs2) = vis_state {
-                                    if let Ok(mut s) = vs2.try_lock() {
+                                if let Some(ref vs2) = vis_state
+                                    && let Ok(mut s) = vs2.try_lock() {
                                         s.epoch_rewards = epoch_rewards;
                                     }
-                                }
                                 episode = self.start_episode;
                                 episode_end = self.start_episode + self.n_episodes;
                                 log::info!("Manual load succeeded. Continuing training.");
@@ -512,9 +509,8 @@ impl Algorithm for AlgorithmCSDP5 {
                         }
                     }
                 }
-            }
 
-            if episode % AUTO_SAVE_INTERVAL == 0 {
+            if episode.is_multiple_of(AUTO_SAVE_INTERVAL) {
                 let epoch_rewards = vis_state
                     .as_ref()
                     .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))

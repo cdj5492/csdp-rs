@@ -22,7 +22,7 @@ impl FFMultiLayer {
         num_epochs: usize,
     ) -> CandleResult<Self> {
         assert!(
-            out_features % num_classes == 0,
+            out_features.is_multiple_of(num_classes),
             "out_features must be divisible by num_classes"
         );
         let vb = VarBuilder::from_varmap(varmap, DType::F32, device);
@@ -126,6 +126,115 @@ impl FFMultiLayer {
 
         Ok(())
     }
+
+    /// Per-action binary training for policy learning.
+    ///
+    /// Unlike `train`, which uses a multi-class contrastive loss (one class wins,
+    /// all others lose), this method treats each action's output chunk as an
+    /// independent binary classifier:
+    ///   - action taken with positive advantage → push that chunk's goodness UP
+    ///   - action taken with negative advantage → push that chunk's goodness DOWN
+    ///   - all other chunks → NO update from this sample
+    ///
+    /// This eliminates the winner-take-all dynamic that the multi-class loss
+    /// produces: in the multi-class version, training action A as positive
+    /// simultaneously pushes down all other actions, causing one to dominate.
+    /// Here, each action's goodness evolves solely from the transitions where it
+    /// was actually taken, with no cross-action interference.
+    pub fn train_binary(
+        &mut self,
+        x: &Tensor,
+        actions: &[usize],
+        advantages: &[f32],
+        layer_idx: usize,
+    ) -> CandleResult<()> {
+        let n_samples = actions.len();
+        let mini_batch_size = 512.min(n_samples);
+
+        for epoch in 0..self.num_epochs {
+            let mut epoch_loss_sum = 0.0f32;
+            let mut n_batches = 0;
+            let mut offset = 0;
+
+            while offset < n_samples {
+                let end = (offset + mini_batch_size).min(n_samples);
+                let batch_len = end - offset;
+
+                let x_batch = x.narrow(0, offset, batch_len)?;
+                let acts = &actions[offset..end];
+                let advs = &advantages[offset..end];
+
+                let out = self.forward(&x_batch)?;
+                let chunks = out.chunk(self.num_classes, 1)?;
+
+                let mut total_loss = Tensor::zeros((), DType::F32, x.device())?;
+                let mut has_any = false;
+
+                for (c, chunk) in chunks.into_iter().enumerate() {
+                    let g = chunk.sqr()?.mean_keepdim(1)?;
+
+                    // Only mask positions where THIS action was taken.
+                    // Other positions contribute nothing to the loss for chunk c.
+                    let mut pos_mask_vec = vec![0.0f32; batch_len];
+                    let mut neg_mask_vec = vec![0.0f32; batch_len];
+                    for (i, (&act, &adv)) in acts.iter().zip(advs.iter()).enumerate() {
+                        if act == c {
+                            if adv > 0.0 {
+                                pos_mask_vec[i] = 1.0;
+                            } else {
+                                neg_mask_vec[i] = 1.0;
+                            }
+                        }
+                    }
+
+                    if pos_mask_vec.iter().all(|&v| v == 0.0)
+                        && neg_mask_vec.iter().all(|&v| v == 0.0)
+                    {
+                        continue;
+                    }
+                    has_any = true;
+
+                    let pos_mask =
+                        Tensor::from_vec(pos_mask_vec, (batch_len, 1), x.device())?;
+                    let neg_mask =
+                        Tensor::from_vec(neg_mask_vec, (batch_len, 1), x.device())?;
+
+                    let pos_term = g.affine(-1.0, self.threshold)?;
+                    let neg_term = g.affine(1.0, -self.threshold)?;
+
+                    let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                        .log()?
+                        .broadcast_mul(&pos_mask)?;
+                    let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                        .log()?
+                        .broadcast_mul(&neg_mask)?;
+
+                    total_loss = (total_loss + pos_loss.sum_all()?)?;
+                    total_loss = (total_loss + neg_loss.sum_all()?)?;
+                }
+
+                if has_any {
+                    let loss = (total_loss / (batch_len as f64))?;
+                    self.opt.backward_step(&loss)?;
+                    epoch_loss_sum += loss.to_vec0::<f32>()?;
+                    n_batches += 1;
+                }
+
+                offset = end;
+            }
+
+            if (epoch % 10 == 0 || epoch == self.num_epochs - 1) && n_batches > 0 {
+                log::info!(
+                    "Layer {} (binary) - Epoch {} Loss: {:.4}",
+                    layer_idx,
+                    epoch,
+                    epoch_loss_sum / n_batches as f32
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub struct FFMultiModel {
@@ -172,6 +281,39 @@ impl FFMultiModel {
             layer.train(&h, y, idx)?;
 
             // Project all data through this layer in mini-batches for the next layer
+            let mut projected_chunks = Vec::new();
+            let mut offset = 0;
+            while offset < n_samples {
+                let end = (offset + infer_batch).min(n_samples);
+                let batch_len = end - offset;
+                let chunk = h.narrow(0, offset, batch_len)?;
+                projected_chunks.push(layer.forward(&chunk)?.detach());
+                offset = end;
+            }
+            h = Tensor::cat(&projected_chunks, 0)?;
+        }
+        Ok(())
+    }
+
+    /// Policy training using per-action binary classification.
+    ///
+    /// Each action's output chunk is trained independently as a binary classifier:
+    /// positive advantage → push goodness up, negative → push goodness down.
+    /// Chunks for actions not present in the batch are untouched, eliminating
+    /// the winner-take-all cross-action suppression of the standard multi-class loss.
+    pub fn train_policy(
+        &mut self,
+        x: &Tensor,
+        actions: &[usize],
+        advantages: &[f32],
+    ) -> CandleResult<()> {
+        let mut h = x.clone();
+        let n_samples = actions.len();
+        let infer_batch = 2048.min(n_samples);
+
+        for (idx, layer) in self.layers.iter_mut().enumerate() {
+            layer.train_binary(&h, actions, advantages, idx)?;
+
             let mut projected_chunks = Vec::new();
             let mut offset = 0;
             while offset < n_samples {

@@ -1,6 +1,5 @@
 use super::ModSignalGenerator;
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
-use candle_nn::ops::sigmoid;
 
 /// Calculates the modulatory goodness signal used for CSDP synapse adjustment.
 /// This uses the Multi-Class Contrastive approach (margin ranking loss).
@@ -31,7 +30,7 @@ impl MultiClassModSignal {
         device: &Device,
     ) -> CandleResult<Self> {
         assert!(
-            size % num_classes == 0,
+            size.is_multiple_of(num_classes),
             "Layer size must be divisible by num_classes"
         );
         Ok(MultiClassModSignal {
@@ -104,7 +103,7 @@ impl ModSignalGenerator for MultiClassModSignal {
             let not_y_c = y_c.affine(-1.0, 1.0)?;
 
             let pos_score = sig_pos.mul(&y_c)?;
-            let neg_score = sig_neg.mul(&not_y_c)?.affine(-alpha as f64, 0.0)?;
+            let neg_score = sig_neg.mul(&not_y_c)?.affine(-alpha , 0.0)?;
             let score_c = pos_score.add(&neg_score)?; // (1, batch_size)
 
             // mod_signal_i = score_c * (2.0 / chunk_size) * z_i

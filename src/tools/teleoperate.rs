@@ -97,7 +97,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 positions[1],
                 positions[2],
                 positions[3],
-                positions[4] + 3.141592,
+                positions[4] + std::f64::consts::PI,
                 positions[5],
             ])?;
         }

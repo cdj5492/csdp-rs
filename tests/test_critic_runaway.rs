@@ -28,8 +28,8 @@ fn test_investigate_runaway_firing() {
     for epoch in 0..10 {
         println!("\n=========== EPOCH {} ===========", epoch);
 
-        let state_f32 = vec![0.5f32, 0.5f32, 0.98f32, 0.2f32];
-        let action_f32 = vec![0.5f32, 0.2f32, 0.1f32, 0.0f32, 0.9f32];
+        let state_f32 = [0.5f32, 0.5f32, 0.98f32, 0.2f32];
+        let action_f32 = [0.5f32, 0.2f32, 0.1f32, 0.0f32, 0.9f32];
 
         let mut input_vec = Vec::with_capacity(state_size + action_size);
         input_vec.extend(state_f32.iter().map(|&x| x * 0.1));
@@ -59,7 +59,7 @@ fn test_investigate_runaway_firing() {
         // 2. Train Critic
         model.critic.is_learning = true;
         let label_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
-        let reward_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
+        let _reward_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
 
         for layer in model.actor.layers.iter_mut() {
             layer.set_positive_sample(&label_tensor);

@@ -8,8 +8,8 @@ pub trait SynapseUpdate: Send + Sync {
     fn update(
         &self,
         weight: &Tensor,
-        pre_layer: &Box<dyn Layer>,
-        post_layer: &Box<dyn Layer>,
+        pre_layer: &dyn Layer,
+        post_layer: &dyn Layer,
         dt: f32,
     ) -> CandleResult<Tensor>;
 }
@@ -103,7 +103,7 @@ impl Synapse {
         // let post_s = layers[self.post].output()?;
         let new_w = self
             .rule
-            .update(&self.weight, &layers[self.pre], &layers[self.post], dt)?;
+            .update(&self.weight, layers[self.pre].as_ref(), layers[self.post].as_ref(), dt)?;
         self.weight = new_w;
         Ok(())
     }

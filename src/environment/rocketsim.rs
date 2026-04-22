@@ -2,7 +2,6 @@ use crate::environment::Environment;
 use crate::flat::rocketsim as flat_rs;
 use planus::WriteAsOffset;
 use rocketsim_rs::{
-    bytes::ToBytes,
     cxx::UniquePtr,
     sim::{Arena, ArenaConfig, CarConfig, CarControls, GameMode, Team},
 };
@@ -12,10 +11,12 @@ use std::str::FromStr;
 use std::sync::Once;
 
 const RLVISER_PORT: u16 = 45243;
+#[allow(dead_code)]
 const ROCKETSIM_PORT: u16 = 34254;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
+#[allow(dead_code)]
 enum UdpPacketTypes {
     Quit = 0,
     GameState = 1,
@@ -29,7 +30,7 @@ static INIT_ROCKETSIM: Once = Once::new();
 
 static NEXT_ENV_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static VISUALIZER_ID: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(std::usize::MAX);
+    std::sync::atomic::AtomicUsize::new(usize::MAX);
 static LAST_VIS_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 use std::cell::RefCell;
@@ -162,10 +163,10 @@ impl RocketSimEnvironment {
             .unwrap()
             .as_millis() as u64;
 
-        let mut current_vis = VISUALIZER_ID.load(std::sync::atomic::Ordering::Relaxed);
+        let current_vis = VISUALIZER_ID.load(std::sync::atomic::Ordering::Relaxed);
         let last_time = LAST_VIS_TIME.load(std::sync::atomic::Ordering::Relaxed);
 
-        if current_vis == std::usize::MAX
+        if current_vis == usize::MAX
             || current_vis == self.id
             || now.saturating_sub(last_time) > 100
         {
@@ -187,7 +188,7 @@ impl RocketSimEnvironment {
             message: flat_rs::Message::GameState(Box::new(flat_state)),
         };
 
-        let offset = packet.prepare(&mut *builder);
+        let offset = packet.prepare(&mut builder);
         let bytes = builder.finish(offset, None);
 
         let len = bytes.len() as u64;
@@ -358,7 +359,7 @@ impl Drop for RocketSimEnvironment {
     fn drop(&mut self) {
         let current_vis = VISUALIZER_ID.load(std::sync::atomic::Ordering::Relaxed);
         if current_vis == self.id {
-            VISUALIZER_ID.store(std::usize::MAX, std::sync::atomic::Ordering::Relaxed);
+            VISUALIZER_ID.store(usize::MAX, std::sync::atomic::Ordering::Relaxed);
         }
     }
 }

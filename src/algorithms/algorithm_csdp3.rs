@@ -52,6 +52,7 @@ impl Algorithm3 {
         })
     }
 
+    #[allow(clippy::type_complexity)]
     fn run_actor_pass(
         &mut self,
         state_tensor: &Tensor,
@@ -127,11 +128,10 @@ impl Algorithm3 {
                     z_vec[i] += spikes_vec[i];
                 }
             }
-            if let Some(layer_id) = record_layer {
-                if let Ok(activity) = self.model.actor.get_layer_activity(layer_id) {
+            if let Some(layer_id) = record_layer
+                && let Ok(activity) = self.model.actor.get_layer_activity(layer_id) {
                     spike_history.push(activity);
                 }
-            }
         }
 
         Ok((z_vec, spike_history))
@@ -191,15 +191,14 @@ impl Algorithm for Algorithm3 {
         let state_size = env.state_size();
 
         for episode in 1..=self.n_episodes {
-            if let Some(ref vis_state_arc) = vis_state {
-                if vis_state_arc
+            if let Some(ref vis_state_arc) = vis_state
+                && vis_state_arc
                     .try_lock()
                     .map(|s| s.should_close)
                     .unwrap_or(false)
                 {
                     return Ok(());
                 }
-            }
             log::info!("starting episode {}", episode);
             env.reset()?;
 
@@ -371,8 +370,8 @@ impl Algorithm for Algorithm3 {
                 self.critic_baseline = (1.0 - self.critic_baseline_alpha) * self.critic_baseline
                     + self.critic_baseline_alpha * td_target;
 
-                if let Some(ref vis_state_arc) = vis_state {
-                    if let Ok(mut state) = vis_state_arc.try_lock() {
+                if let Some(ref vis_state_arc) = vis_state
+                    && let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = env.get_state()?;
                         if state.runtime_stats.epoch != episode {
                             state.render_trail.clear();
@@ -389,11 +388,10 @@ impl Algorithm for Algorithm3 {
                         }
 
                         // Update visualization snapshot
-                        if !state.positions_initialized || state.selected_layer_id.is_some() {
-                            if let Ok(snapshot) = self.model.actor.get_visualization_snapshot() {
+                        if (!state.positions_initialized || state.selected_layer_id.is_some())
+                            && let Ok(snapshot) = self.model.actor.get_visualization_snapshot() {
                                 state.update_from_snapshot(snapshot);
                             }
-                        }
 
                         // Always update stat speed
                         if total_iteration % 20 == 0 {
@@ -411,14 +409,12 @@ impl Algorithm for Algorithm3 {
                             }
                         }
                     }
-                }
             }
 
-            if let Some(ref vis_state_arc) = vis_state {
-                if let Ok(mut state) = vis_state_arc.try_lock() {
+            if let Some(ref vis_state_arc) = vis_state
+                && let Ok(mut state) = vis_state_arc.try_lock() {
                     state.epoch_rewards.push((episode, total_reward as f32));
                 }
-            }
             log::info!("Episode {} total reward: {}", episode, total_reward);
         }
 
@@ -431,12 +427,11 @@ impl Algorithm for Algorithm3 {
         let _ = self.model.actor.save(&final_acc_path);
         let _ = self.model.critic.save(&final_crit_path);
 
-        if let Some(ref vis_state_arc) = vis_state {
-            if let Ok(state) = vis_state_arc.try_lock() {
+        if let Some(ref vis_state_arc) = vis_state
+            && let Ok(state) = vis_state_arc.try_lock() {
                 let csv_path = checkpoints_dir.join("epoch_rewards.csv");
                 let _ = state.save_graphs_to_csv(&csv_path);
             }
-        }
 
         Ok(())
     }

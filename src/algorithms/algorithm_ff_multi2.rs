@@ -140,7 +140,7 @@ impl AlgorithmFFMulti2 {
         // so that FFMultiLayer's out_features % num_classes == 0 invariant holds.
         let mut dims = vec![input_size];
         for &h in &hidden_sizes {
-            let rounded = ((h + num_classes - 1) / num_classes) * num_classes;
+            let rounded = h.div_ceil(num_classes) * num_classes;
             dims.push(rounded);
         }
 
@@ -321,11 +321,10 @@ impl Algorithm for AlgorithmFFMulti2 {
 
         while episode <= episode_end {
             // ── early-exit on close ──
-            if let Some(ref vs) = vis_state {
-                if vs.try_lock().map(|s| s.should_close).unwrap_or(false) {
+            if let Some(ref vs) = vis_state
+                && vs.try_lock().map(|s| s.should_close).unwrap_or(false) {
                     return Ok(());
                 }
-            }
 
             log::info!(
                 "starting episode {} (x{} envs) | ReturnRange: [{:.4}, {:.4}]",
@@ -420,7 +419,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                         })
                         .collect();
 
-                    if episode % 10 == 0 && _step == 0 && env_idx == 0 {
+                    if episode.is_multiple_of(10) && _step == 0 && env_idx == 0 {
                         log::info!(
                             "Ep {} Step 0 | SoftValues: {:.4?}",
                             episode,
@@ -504,9 +503,8 @@ impl Algorithm for AlgorithmFFMulti2 {
                             Tensor::from_vec(input_vec, (1, input_size), &self.device)
                         {
                             if let Ok(main_scores) =
-                                self.main_model.predict_scores(&[inf_tensor.clone()])
-                            {
-                                if let Ok(main_flat) =
+                                self.main_model.predict_scores(std::slice::from_ref(&inf_tensor))
+                                && let Ok(main_flat) =
                                     main_scores.flatten_all().and_then(|t| t.to_vec1::<f32>())
                                 {
                                     let main_max =
@@ -516,11 +514,9 @@ impl Algorithm for AlgorithmFFMulti2 {
                                     let main_sum: f32 = main_exps.iter().sum();
                                     main_probs = main_exps.iter().map(|v| v / main_sum).collect();
                                 }
-                            }
                             if let Ok(target_scores) =
                                 self.target_model.predict_scores(&[inf_tensor])
-                            {
-                                if let Ok(target_flat) =
+                                && let Ok(target_flat) =
                                     target_scores.flatten_all().and_then(|t| t.to_vec1::<f32>())
                                 {
                                     let target_max = target_flat
@@ -535,7 +531,6 @@ impl Algorithm for AlgorithmFFMulti2 {
                                     target_probs =
                                         target_exps.iter().map(|v| v / target_sum).collect();
                                 }
-                            }
                         }
                     }
 
@@ -585,15 +580,14 @@ impl Algorithm for AlgorithmFFMulti2 {
             total_inference_time += inference_elapsed;
 
             // ── Record episode reward ──
-            if let Some(ref vs) = vis_state {
-                if let Ok(mut state) = vs.try_lock() {
+            if let Some(ref vs) = vis_state
+                && let Ok(mut state) = vs.try_lock() {
                     let avg_reward = raw_rewards.iter().sum::<f64>() as f32
                         / (n_envs as f32 * self.n_steps_per_episode as f32);
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = episode_end;
                 }
-            }
 
             // ── Compute Monte Carlo returns and add to replay buffer ──
             // For each environment's episode trajectory, compute discounted
@@ -676,7 +670,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                     .collect();
 
                 // ── Diagnostic: log class distribution every 10 episodes ──
-                if episode % 10 == 0 {
+                if episode.is_multiple_of(10) {
                     let mut class_counts = vec![0usize; self.num_classes];
                     for &c in &training_labels {
                         class_counts[c] += 1;
@@ -716,7 +710,7 @@ impl Algorithm for AlgorithmFFMulti2 {
             // ═══════════════════════════════════════════════════
             // Target Model Sync (every K episodes)
             // ═══════════════════════════════════════════════════
-            if episode % self.target_sync_interval == 0 {
+            if episode.is_multiple_of(self.target_sync_interval) {
                 log::info!(
                     ">>> Syncing Target Model at episode {} (interval={}) <<<",
                     episode,
@@ -730,8 +724,8 @@ impl Algorithm for AlgorithmFFMulti2 {
             // ═══════════════════════════════════════════════════
 
             // ── Manual save/load via visualisation UI ──
-            if let Some(ref vs) = vis_state {
-                if let Ok(mut state) = vs.try_lock() {
+            if let Some(ref vs) = vis_state
+                && let Ok(mut state) = vs.try_lock() {
                     if state.save_requested {
                         log::info!("Manual save requested...");
                         let epoch_rewards = state.epoch_rewards.clone();
@@ -750,11 +744,10 @@ impl Algorithm for AlgorithmFFMulti2 {
                         match self.load_checkpoint(checkpoint_dir) {
                             Ok(epoch_rewards) => {
                                 // Push restored rewards into vis state.
-                                if let Some(ref vs2) = vis_state {
-                                    if let Ok(mut s) = vs2.try_lock() {
+                                if let Some(ref vs2) = vis_state
+                                    && let Ok(mut s) = vs2.try_lock() {
                                         s.epoch_rewards = epoch_rewards;
                                     }
-                                }
                                 // Re-sync target model after loading.
                                 sync_target_from_main(&self.main_model, &self.target_model)?;
 
@@ -771,10 +764,9 @@ impl Algorithm for AlgorithmFFMulti2 {
                         }
                     }
                 }
-            }
 
             // ── Periodic auto-save ──
-            if episode % AUTO_SAVE_INTERVAL == 0 {
+            if episode.is_multiple_of(AUTO_SAVE_INTERVAL) {
                 let epoch_rewards = vis_state
                     .as_ref()
                     .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
@@ -821,12 +813,11 @@ impl Algorithm for AlgorithmFFMulti2 {
             log::error!("Final save failed: {}", e);
         }
 
-        if let Some(ref vs) = vis_state {
-            if let Ok(state) = vs.try_lock() {
+        if let Some(ref vs) = vis_state
+            && let Ok(state) = vs.try_lock() {
                 let csv_path = std::path::Path::new(CHECKPOINT_DIR).join("epoch_rewards.csv");
                 let _ = state.save_graphs_to_csv(&csv_path);
             }
-        }
         Ok(())
     }
 }
