@@ -37,8 +37,15 @@ impl Algorithm2 {
             combined
         });
 
-        let model = RLModel2::new(input_size, context_size, hidden_sizes, &device, dt, input_bounds)
-            .expect("Failed to create RLModel2");
+        let model = RLModel2::new(
+            input_size,
+            context_size,
+            hidden_sizes,
+            &device,
+            dt,
+            input_bounds,
+        )
+        .expect("Failed to create RLModel2");
 
         Ok(Self {
             model,
@@ -100,11 +107,8 @@ impl Algorithm for Algorithm2 {
                     input_vec.extend(vec![0.0f32; state_size]); // x_{t+M} is zeroed out during inference
                     input_vec.push(a as f32);
 
-                    let input_tensor = Tensor::from_vec(
-                        input_vec,
-                        (state_size * 2 + 1, 1),
-                        &self.device,
-                    )?;
+                    let input_tensor =
+                        Tensor::from_vec(input_vec, (state_size * 2 + 1, 1), &self.device)?;
                     let activity_tensor = self.model.process(&input_tensor, self.n_timesteps)?;
                     let activity = activity_tensor.to_vec2::<f32>()?[0][0];
                     log::info!("activity for {}: {}", a, activity);
@@ -134,7 +138,9 @@ impl Algorithm for Algorithm2 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -308,11 +314,8 @@ impl Algorithm for Algorithm2 {
                 for (input_vec, label, reward) in &train_data {
                     total_iteration += 1;
 
-                    let input_tensor = Tensor::from_vec(
-                        input_vec.clone(),
-                        (state_size * 2 + 1, 1),
-                        &self.device,
-                    )?;
+                    let input_tensor =
+                        Tensor::from_vec(input_vec.clone(), (state_size * 2 + 1, 1), &self.device)?;
                     let context_tensor = Tensor::from_vec(vec![*label], (1, 1), &self.device)?;
 
                     let label_tensor = Tensor::from_vec(vec![*label], (1, 1), &self.device)?;
@@ -383,7 +386,9 @@ impl Algorithm for Algorithm2 {
             };
             log::info!(
                 "[Episode {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, inf_aps, ep_s
+                episode,
+                inf_aps,
+                ep_s
             );
         } // end of episodes
 

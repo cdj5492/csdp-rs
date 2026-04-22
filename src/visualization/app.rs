@@ -1,18 +1,18 @@
 use super::{ModelStructure, VisualizationState};
 use crate::synapse::LayerId;
+use crossterm::event::{self, Event, KeyCode, MouseEventKind};
 use ratatui::{
+    Frame,
     backend::Backend,
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        canvas::{Canvas, Line as CanvasLine, Circle, Points},
-        Block, Borders, Gauge, List, ListItem, Paragraph, ListState,
-        Chart, Axis, Dataset, GraphType, Tabs, BarChart,
+        Axis, BarChart, Block, Borders, Chart, Dataset, Gauge, GraphType, List, ListItem,
+        ListState, Paragraph, Tabs,
+        canvas::{Canvas, Circle, Line as CanvasLine, Points},
     },
-    Frame,
 };
-use crossterm::event::{self, Event, KeyCode, MouseEventKind};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -23,11 +23,11 @@ pub struct NeuralNetworkVisualizerApp {
     link_force: f32,
     center_force: f32,
     link_distance: f32,
-    
+
     selected_layer_id: Option<LayerId>,
     spike_history: Vec<Vec<f32>>,
     displayed_epoch: usize,
-    
+
     log_state: ListState,
     show_help: bool,
     active_tab: usize,
@@ -53,7 +53,10 @@ impl NeuralNetworkVisualizerApp {
         }
     }
 
-    pub fn run<B: Backend>(&mut self, terminal: &mut ratatui::Terminal<B>) -> Result<(), std::io::Error>
+    pub fn run<B: Backend>(
+        &mut self,
+        terminal: &mut ratatui::Terminal<B>,
+    ) -> Result<(), std::io::Error>
     where
         std::io::Error: From<B::Error>,
     {
@@ -64,7 +67,9 @@ impl NeuralNetworkVisualizerApp {
             // Check state for should_close
             let should_close = if let Ok(state) = self.vis_state.lock() {
                 state.should_close
-            } else { false };
+            } else {
+                false
+            };
 
             if should_close {
                 return Ok(());
@@ -90,21 +95,23 @@ impl NeuralNetworkVisualizerApp {
     fn cycle_selection(&mut self, dir: isize) {
         if let Ok(mut state) = self.vis_state.lock() {
             let layers = &state.model_structure.layers;
-            if layers.is_empty() { return; }
-            
+            if layers.is_empty() {
+                return;
+            }
+
             let current_idx = if let Some(id) = state.selected_layer_id {
                 layers.iter().position(|l| l.id == id).unwrap_or(0) as isize
             } else {
                 -1
             };
-            
+
             let mut next_idx = current_idx + dir;
             if next_idx < 0 {
                 next_idx = layers.len() as isize - 1;
             } else if next_idx >= layers.len() as isize {
                 next_idx = 0;
             }
-            
+
             state.selected_layer_id = Some(layers[next_idx as usize].id);
             self.selected_layer_id = state.selected_layer_id;
             state.epoch_spike_history = None;
@@ -114,88 +121,84 @@ impl NeuralNetworkVisualizerApp {
 
     fn handle_event(&mut self, event: Event) {
         match event {
-            Event::Key(key) => {
-                match key.code {
-                    KeyCode::Char('q') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.should_close = true;
-                        }
+            Event::Key(key) => match key.code {
+                KeyCode::Char('q') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.should_close = true;
                     }
-                    KeyCode::Char('p') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.is_paused = !state.is_paused;
-                        }
-                    }
-                    KeyCode::Char('s') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.save_requested = true;
-                            let path = std::path::Path::new("checkpoints/epoch_rewards.csv");
-                            let _ = state.save_graphs_to_csv(path);
-                        }
-                    }
-                    KeyCode::Char('l') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.load_requested = true;
-                        }
-                    }
-                    KeyCode::Char('o') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.sort_probabilities = !state.sort_probabilities;
-                        }
-                    }
-                    KeyCode::Esc => {
-                        self.show_help = false;
-                    }
-                    KeyCode::Char('?') => {
-                        self.show_help = !self.show_help;
-                    }
-                    KeyCode::Char(']') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.delay_ms = std::cmp::min(state.delay_ms + 10, 500);
-                        }
-                    }
-                    KeyCode::Char('[') => {
-                        if let Ok(mut state) = self.vis_state.lock() {
-                            state.delay_ms = state.delay_ms.saturating_sub(10);
-                        }
-                    }
-                    KeyCode::Tab => {
-                        self.active_tab = (self.active_tab + 1) % 3;
-                    }
-                    KeyCode::Right => {
-                        self.cycle_selection(1);
-                    }
-                    KeyCode::Left => {
-                        self.cycle_selection(-1);
-                    }
-                    KeyCode::Up => {
-                        let i = self.log_state.selected().unwrap_or(0);
-                        self.log_state.select(Some(i.saturating_sub(1)));
-                        self.user_scrolled = true;
-                    }
-                    KeyCode::Down => {
-                        let i = self.log_state.selected().unwrap_or(0);
-                        self.log_state.select(Some(i + 1));
-                        self.user_scrolled = true;
-                    }
-                    _ => {}
                 }
-            }
-            Event::Mouse(mouse) => {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        let i = self.log_state.selected().unwrap_or(0);
-                        self.log_state.select(Some(i.saturating_sub(1)));
-                        self.user_scrolled = true;
+                KeyCode::Char('p') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.is_paused = !state.is_paused;
                     }
-                    MouseEventKind::ScrollDown => {
-                        let i = self.log_state.selected().unwrap_or(0);
-                        self.log_state.select(Some(i + 1));
-                        self.user_scrolled = true;
-                    }
-                    _ => {}
                 }
-            }
+                KeyCode::Char('s') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.save_requested = true;
+                        let path = std::path::Path::new("checkpoints/epoch_rewards.csv");
+                        let _ = state.save_graphs_to_csv(path);
+                    }
+                }
+                KeyCode::Char('l') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.load_requested = true;
+                    }
+                }
+                KeyCode::Char('o') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.sort_probabilities = !state.sort_probabilities;
+                    }
+                }
+                KeyCode::Esc => {
+                    self.show_help = false;
+                }
+                KeyCode::Char('?') => {
+                    self.show_help = !self.show_help;
+                }
+                KeyCode::Char(']') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.delay_ms = std::cmp::min(state.delay_ms + 10, 500);
+                    }
+                }
+                KeyCode::Char('[') => {
+                    if let Ok(mut state) = self.vis_state.lock() {
+                        state.delay_ms = state.delay_ms.saturating_sub(10);
+                    }
+                }
+                KeyCode::Tab => {
+                    self.active_tab = (self.active_tab + 1) % 3;
+                }
+                KeyCode::Right => {
+                    self.cycle_selection(1);
+                }
+                KeyCode::Left => {
+                    self.cycle_selection(-1);
+                }
+                KeyCode::Up => {
+                    let i = self.log_state.selected().unwrap_or(0);
+                    self.log_state.select(Some(i.saturating_sub(1)));
+                    self.user_scrolled = true;
+                }
+                KeyCode::Down => {
+                    let i = self.log_state.selected().unwrap_or(0);
+                    self.log_state.select(Some(i + 1));
+                    self.user_scrolled = true;
+                }
+                _ => {}
+            },
+            Event::Mouse(mouse) => match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    let i = self.log_state.selected().unwrap_or(0);
+                    self.log_state.select(Some(i.saturating_sub(1)));
+                    self.user_scrolled = true;
+                }
+                MouseEventKind::ScrollDown => {
+                    let i = self.log_state.selected().unwrap_or(0);
+                    self.log_state.select(Some(i + 1));
+                    self.user_scrolled = true;
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -278,9 +281,9 @@ impl NeuralNetworkVisualizerApp {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(3), // Header/Stats
-                Constraint::Length(3), // Tabs
-                Constraint::Min(0),    // Main content
+                Constraint::Length(3),  // Header/Stats
+                Constraint::Length(3),  // Tabs
+                Constraint::Min(0),     // Main content
                 Constraint::Length(10), // Logs
             ])
             .split(size);
@@ -295,21 +298,25 @@ impl NeuralNetworkVisualizerApp {
                     self.displayed_epoch = epoch;
                 }
             }
-            
+
             self.draw_header(f, chunks[0], &state);
 
             let titles = vec!["Network Topology", "Environment", "Analysis"]
                 .into_iter()
                 .map(|t| Line::from(Span::styled(t, Style::default().fg(Color::White))))
                 .collect::<Vec<_>>();
-                
+
             let tabs = Tabs::new(titles)
                 .block(Block::default().borders(Borders::ALL).title("Views"))
                 .select(self.active_tab)
-                .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow));
-                
+                .highlight_style(
+                    Style::default()
+                        .add_modifier(Modifier::BOLD)
+                        .fg(Color::Yellow),
+                );
+
             f.render_widget(tabs, chunks[1]);
-            
+
             match self.active_tab {
                 0 => {
                     let main_chunks = Layout::default()
@@ -345,7 +352,7 @@ impl NeuralNetworkVisualizerApp {
             self.draw_help(f, size);
         }
     }
-    
+
     fn draw_env_state(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
         if let Some(env_state) = &state.environment_state {
             if env_state.len() == 4 {
@@ -355,33 +362,62 @@ impl NeuralNetworkVisualizerApp {
                 let gx = env_state[2];
                 let gy = env_state[3];
                 let grid_size = 50.0;
-                
+
                 let cloned_trail = state.render_trail.clone();
                 let canvas = Canvas::default()
-                    .block(Block::default().borders(Borders::ALL).title("Env: Grid 50x50 (Yellow=Player, Green=Goal)"))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Env: Grid 50x50 (Yellow=Player, Green=Goal)"),
+                    )
                     .marker(ratatui::symbols::Marker::HalfBlock)
                     .x_bounds([0.0, grid_size])
                     .y_bounds([0.0, grid_size])
                     .paint(move |ctx| {
                         for (tx, ty) in cloned_trail.iter() {
-                            ctx.draw(&Points { coords: &[(*tx, grid_size - *ty)], color: Color::DarkGray });
+                            ctx.draw(&Points {
+                                coords: &[(*tx, grid_size - *ty)],
+                                color: Color::DarkGray,
+                            });
                         }
-                        ctx.draw(&Points { coords: &[(gx as f64, grid_size - gy as f64)], color: Color::Green });
-                        ctx.draw(&Points { coords: &[(px as f64, grid_size - py as f64)], color: Color::Yellow });
+                        ctx.draw(&Points {
+                            coords: &[(gx as f64, grid_size - gy as f64)],
+                            color: Color::Green,
+                        });
+                        ctx.draw(&Points {
+                            coords: &[(px as f64, grid_size - py as f64)],
+                            color: Color::Yellow,
+                        });
                     });
                 f.render_widget(canvas, area);
             } else if env_state.len() == 6 {
                 // Robot arm visualization
-                let text = env_state.iter().enumerate().map(|(i, &v)| format!("J{}:{:.1}", i, v)).collect::<Vec<_>>().join(" ");
-                let p = Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Env State: Robot"));
+                let text = env_state
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| format!("J{}:{:.1}", i, v))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let p = Paragraph::new(text).block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Env State: Robot"),
+                );
                 f.render_widget(p, area);
             } else {
-                let text = env_state.iter().enumerate().map(|(i, &v)| format!("D{}:{:.1}", i, v)).collect::<Vec<_>>().join(" ");
-                let p = Paragraph::new(text).block(Block::default().borders(Borders::ALL).title("Env State"));
+                let text = env_state
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| format!("D{}:{:.1}", i, v))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let p = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).title("Env State"));
                 f.render_widget(p, area);
             }
         } else {
-            let p = Paragraph::new("No Environment Data").block(Block::default().borders(Borders::ALL).title("Env State"));
+            let p = Paragraph::new("No Environment Data")
+                .block(Block::default().borders(Borders::ALL).title("Env State"));
             f.render_widget(p, area);
         }
     }
@@ -389,8 +425,11 @@ impl NeuralNetworkVisualizerApp {
     fn draw_model_probs(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
         if let Some(probs_vec) = &state.model_probabilities {
             if probs_vec.is_empty() {
-                let p = Paragraph::new("No probabilities available")
-                    .block(Block::default().borders(Borders::ALL).title("Probability Distributions"));
+                let p = Paragraph::new("No probabilities available").block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Probability Distributions"),
+                );
                 f.render_widget(p, area);
                 return;
             }
@@ -403,24 +442,27 @@ impl NeuralNetworkVisualizerApp {
                 .split(area);
 
             for (i, (name, probs)) in probs_vec.iter().enumerate() {
-                let mut display_data: Vec<(String, f32)> = probs.iter()
+                let mut display_data: Vec<(String, f32)> = probs
+                    .iter()
                     .enumerate()
                     .map(|(c, &val)| (format!("{:02}", c), val))
                     .collect();
 
                 if state.sort_probabilities {
-                    display_data.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    display_data
+                        .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                 }
 
                 // Automatically calculate width needed
                 let bar_count = display_data.len() as u16;
-                let bar_data: Vec<(&str, u64)> = display_data.iter()
+                let bar_data: Vec<(&str, u64)> = display_data
+                    .iter()
                     .map(|(label, val)| (label.as_str(), (*val * 100.0) as u64))
                     .collect();
 
                 let avail_width = chunks[i].width.saturating_sub(2);
                 let width_per_bar = avail_width.checked_div(bar_count.max(1)).unwrap_or(1);
-                
+
                 let (bw, gap) = if width_per_bar >= 4 {
                     (3, 1)
                 } else if width_per_bar == 3 {
@@ -444,7 +486,11 @@ impl NeuralNetworkVisualizerApp {
                 f.render_widget(barchart, chunks[i]);
             }
         } else {
-            let p = Paragraph::new("No Model Data").block(Block::default().borders(Borders::ALL).title("Probability Distributions"));
+            let p = Paragraph::new("No Model Data").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Probability Distributions"),
+            );
             f.render_widget(p, area);
         }
     }
@@ -467,21 +513,34 @@ impl NeuralNetworkVisualizerApp {
         };
 
         let gauge = Gauge::default()
-            .block(Block::default().borders(Borders::ALL).title("Training Progress"))
-            .gauge_style(Style::default().fg(Color::Green).bg(Color::Black).add_modifier(Modifier::BOLD))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Training Progress"),
+            )
+            .gauge_style(
+                Style::default()
+                    .fg(Color::Green)
+                    .bg(Color::Black)
+                    .add_modifier(Modifier::BOLD),
+            )
             .ratio(progress as f64)
             .label(text);
-        
+
         f.render_widget(gauge, area);
     }
 
     fn draw_network(&self, f: &mut Frame, area: Rect, model: &ModelStructure) {
         let canvas = Canvas::default()
-            .block(Block::default().borders(Borders::ALL).title("Network Topology"))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Network Topology"),
+            )
             .x_bounds([0.0, 1000.0])
             .y_bounds([0.0, 400.0])
             .paint(|ctx| {
-                // Draw Curved Synapses 
+                // Draw Curved Synapses
                 for synapse in &model.synapses {
                     if let (Some(pre), Some(post)) = (
                         model.layers.iter().find(|l| l.id == synapse.pre_layer),
@@ -491,22 +550,26 @@ impl NeuralNetworkVisualizerApp {
                         let mid_y = (pre.position.y + post.position.y) / 2.0;
                         let dx = post.position.x - pre.position.x;
                         let dy = post.position.y - pre.position.y;
-                        
+
                         // Normal vector to bend the connection
                         let nx = -dy * 0.15;
                         let ny = dx * 0.15;
                         let ctrl_x = mid_x + nx;
                         let ctrl_y = mid_y + ny;
-                        
+
                         let mut prev_x = pre.position.x as f64;
                         let mut prev_y = pre.position.y as f64;
-                        
+
                         for i in 1..=10 {
                             let t = i as f64 / 10.0;
                             let mt = 1.0 - t;
-                            let cur_x = mt * mt * pre.position.x as f64 + 2.0 * mt * t * ctrl_x as f64 + t * t * post.position.x as f64;
-                            let cur_y = mt * mt * pre.position.y as f64 + 2.0 * mt * t * ctrl_y as f64 + t * t * post.position.y as f64;
-                            
+                            let cur_x = mt * mt * pre.position.x as f64
+                                + 2.0 * mt * t * ctrl_x as f64
+                                + t * t * post.position.x as f64;
+                            let cur_y = mt * mt * pre.position.y as f64
+                                + 2.0 * mt * t * ctrl_y as f64
+                                + t * t * post.position.y as f64;
+
                             ctx.draw(&CanvasLine {
                                 x1: prev_x,
                                 y1: prev_y,
@@ -524,7 +587,9 @@ impl NeuralNetworkVisualizerApp {
                 for layer in &model.layers {
                     let activity_ratio = if layer.size > 0 {
                         layer.spike_count as f32 / layer.size as f32
-                    } else { 0.0 };
+                    } else {
+                        0.0
+                    };
 
                     let color = if self.selected_layer_id == Some(layer.id) {
                         Color::Yellow
@@ -542,11 +607,11 @@ impl NeuralNetworkVisualizerApp {
                         radius,
                         color,
                     });
-                    
+
                     ctx.print(
                         layer.position.x as f64,
                         layer.position.y as f64 - 20.0,
-                        Span::styled(layer.name.clone(), Style::default().fg(Color::White))
+                        Span::styled(layer.name.clone(), Style::default().fg(Color::White)),
                     );
                 }
             });
@@ -564,17 +629,26 @@ impl NeuralNetworkVisualizerApp {
                 items.push(ListItem::new(format!("Size: {} neurons", layer.size)));
                 let activity_ratio = if layer.size > 0 {
                     layer.spike_count as f32 / layer.size as f32 * 100.0
-                } else { 0.0 };
+                } else {
+                    0.0
+                };
                 items.push(ListItem::new(format!("Activity: {:.1}%", activity_ratio)));
             }
         } else {
-            items.push(ListItem::new("No layer selected. Use Left/Right keys targeting."));
-            items.push(ListItem::new(format!("Total Layers: {}", model.layers.len())));
-            items.push(ListItem::new(format!("Total Synapses: {}", model.synapses.len())));
+            items.push(ListItem::new(
+                "No layer selected. Use Left/Right keys targeting.",
+            ));
+            items.push(ListItem::new(format!(
+                "Total Layers: {}",
+                model.layers.len()
+            )));
+            items.push(ListItem::new(format!(
+                "Total Synapses: {}",
+                model.synapses.len()
+            )));
         }
 
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Details"));
+        let list = List::new(items).block(Block::default().borders(Borders::ALL).title("Details"));
         f.render_widget(list, area);
     }
 
@@ -606,7 +680,7 @@ impl NeuralNetworkVisualizerApp {
                         .marker(ratatui::symbols::Marker::Dot)
                         .graph_type(ratatui::widgets::GraphType::Scatter)
                         .style(Style::default().fg(Color::Yellow))
-                        .data(&points)
+                        .data(&points),
                 ];
 
                 let x_labels = vec![Span::raw("0"), Span::raw(format!("{}", num_timesteps))];
@@ -614,18 +688,22 @@ impl NeuralNetworkVisualizerApp {
 
                 let chart = ratatui::widgets::Chart::new(datasets)
                     .block(Block::default().title(title).borders(Borders::ALL))
-                    .x_axis(ratatui::widgets::Axis::default()
-                        .bounds([0.0, num_timesteps.max(1.0)])
-                        .labels(x_labels))
-                    .y_axis(ratatui::widgets::Axis::default()
-                        .bounds([0.0, num_neurons.max(1.0)])
-                        .labels(y_labels));
+                    .x_axis(
+                        ratatui::widgets::Axis::default()
+                            .bounds([0.0, num_timesteps.max(1.0)])
+                            .labels(x_labels),
+                    )
+                    .y_axis(
+                        ratatui::widgets::Axis::default()
+                            .bounds([0.0, num_neurons.max(1.0)])
+                            .labels(y_labels),
+                    );
 
                 f.render_widget(chart, area);
                 return;
             }
         }
-        
+
         let p = Paragraph::new("Select a layer to view raster plot.")
             .block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(p, area);
@@ -634,8 +712,11 @@ impl NeuralNetworkVisualizerApp {
     fn draw_rewards(&self, f: &mut Frame, area: Rect, state: &VisualizationState) {
         let history = &state.epoch_rewards;
         if history.is_empty() {
-            let p = Paragraph::new("No reward data yet.")
-                .block(Block::default().borders(Borders::ALL).title("Reward History"));
+            let p = Paragraph::new("No reward data yet.").block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Reward History"),
+            );
             f.render_widget(p, area);
             return;
         }
@@ -649,14 +730,14 @@ impl NeuralNetworkVisualizerApp {
 
         for (i, &(e, r)) in history.iter().enumerate() {
             points.push((e as f64, r as f64));
-            
+
             // Calculate running average
             let start_idx = i.saturating_sub(window_size);
             let count = i - start_idx + 1;
             let sum: f32 = history[start_idx..=i].iter().map(|&(_, v)| v).sum();
             let avg = sum / count as f32;
             avg_points.push((e as f64, avg as f64));
-            
+
             min_r = min_r.min(r).min(avg);
             max_r = max_r.max(r).max(avg);
         }
@@ -672,31 +753,51 @@ impl NeuralNetworkVisualizerApp {
                 .name(format!("Avg ({})", window_size))
                 .marker(ratatui::symbols::Marker::Braille)
                 .graph_type(ratatui::widgets::GraphType::Line)
-                .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-                .data(&avg_points)
+                .style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .data(&avg_points),
         ];
 
         let chart = ratatui::widgets::Chart::new(datasets)
-            .block(Block::default().title("Reward History").borders(Borders::ALL))
-            .x_axis(ratatui::widgets::Axis::default()
-                .title("Epoch")
-                .bounds([0.0, max_epoch.max(1.0)])
-                .labels(vec![Span::raw("0"), Span::raw(format!("{}", max_epoch))]))
-            .y_axis(ratatui::widgets::Axis::default()
-                .title("Reward")
-                .bounds([min_r.min(0.0) as f64, max_r.max(0.1) as f64])
-                .labels(vec![Span::raw(format!("{:.1}", min_r)), Span::raw(format!("{:.1}", max_r))]));
+            .block(
+                Block::default()
+                    .title("Reward History")
+                    .borders(Borders::ALL),
+            )
+            .x_axis(
+                ratatui::widgets::Axis::default()
+                    .title("Epoch")
+                    .bounds([0.0, max_epoch.max(1.0)])
+                    .labels(vec![Span::raw("0"), Span::raw(format!("{}", max_epoch))]),
+            )
+            .y_axis(
+                ratatui::widgets::Axis::default()
+                    .title("Reward")
+                    .bounds([min_r.min(0.0) as f64, max_r.max(0.1) as f64])
+                    .labels(vec![
+                        Span::raw(format!("{:.1}", min_r)),
+                        Span::raw(format!("{:.1}", max_r)),
+                    ]),
+            );
 
         f.render_widget(chart, area);
     }
 
     fn draw_logs(&mut self, f: &mut Frame, area: Rect) {
         let logs = if let Ok(logs_guard) = super::GLOBAL_LOGS.lock() {
-            logs_guard.iter().map(|l| ListItem::new(l.clone())).collect::<Vec<_>>()
-        } else { vec![] };
-        
+            logs_guard
+                .iter()
+                .map(|l| ListItem::new(l.clone()))
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+
         let total_logs = logs.len();
-        
+
         // Auto scroll to latest if user hasn't explicitly scrolled backwards
         if !self.user_scrolled || self.log_state.selected().is_none() {
             if total_logs > 0 {
@@ -716,18 +817,25 @@ impl NeuralNetworkVisualizerApp {
                 }
             }
         }
-        
+
         let list = List::new(logs)
-            .block(Block::default().title("Execution Logs (Scroll with up/down arrows or mouse)").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .title("Execution Logs (Scroll with up/down arrows or mouse)")
+                    .borders(Borders::ALL),
+            )
             .highlight_style(Style::default().bg(Color::DarkGray));
-            
+
         f.render_stateful_widget(list, area, &mut self.log_state);
     }
 
     fn draw_help(&self, f: &mut Frame, screen_area: Rect) {
         let area = centered_rect(50, 50, screen_area);
         let help_text = vec![
-            Line::from(Span::styled("Keyboard Shortcuts", Style::default().add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "Keyboard Shortcuts",
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             Line::from("  ?       Toggle this help menu"),
             Line::from("  q   Quit application"),
@@ -743,7 +851,7 @@ impl NeuralNetworkVisualizerApp {
         let p = Paragraph::new(help_text)
             .block(Block::default().borders(Borders::ALL).title("Help"))
             .alignment(Alignment::Left);
-        
+
         f.render_widget(ratatui::widgets::Clear, area);
         f.render_widget(p, area);
     }

@@ -70,7 +70,10 @@ impl CSDPMultiModel {
                 name: format!("Hidden_{}", i),
                 layer_type: "LIF (MultiClass)".to_string(),
                 size,
-                position: LayerPosition { x: 100.0 * (i as f32 + 1.0), y: 100.0 },
+                position: LayerPosition {
+                    x: 100.0 * (i as f32 + 1.0),
+                    y: 100.0,
+                },
             });
         }
 
@@ -94,7 +97,8 @@ impl CSDPMultiModel {
             });
 
             // Backward synapse
-            if i > 0 { // Don't do backward to Bernoulli Input layer
+            if i > 0 {
+                // Don't do backward to Bernoulli Input layer
                 let synapse_back = Box::new(CSDP::new(post_size, pre_size, device)?);
                 synapses.push(SynapseConnection {
                     metadata: SynapseMetadata {
@@ -178,8 +182,8 @@ impl CSDPMultiModel {
                 let pre_layer_id = syn_conn.metadata.pre_layer;
                 let post_layer_id = syn_conn.metadata.post_layer;
                 let pre_act = self.layers[pre_layer_id].output()?;
-                
-                // Rust lifetime scope rule limitation requires us to extract pre_act, 
+
+                // Rust lifetime scope rule limitation requires us to extract pre_act,
                 // but we also need mutable access to layers. pre_act is cloned for safety.
                 let pre_act_cloned = pre_act.clone();
                 syn_conn.synapse.update_weights(
@@ -196,27 +200,32 @@ impl CSDPMultiModel {
     /// Run the model for T timesteps to accumulate goodness scores across classes
     pub fn predict_scores(&mut self, inputs: &[Tensor]) -> CandleResult<Tensor> {
         let batched_inputs = Tensor::cat(inputs, 0)?;
-        // Shape of batched_inputs: (batch_size, input_dim). 
+        // Shape of batched_inputs: (batch_size, input_dim).
         // SNN expects (input_dim, batch_size).
         let input_tensor = batched_inputs.transpose(0, 1)?.contiguous()?;
-        
+
         let batch_size = input_tensor.dim(1)?;
         self.reset(batch_size)?;
-        
+
         let was_learning = self.is_learning;
         self.disable_learning();
-        
-        let mut total_goodness = Tensor::zeros((batch_size, self.num_classes), candle_core::DType::F32, &self.device)?;
-        
+
+        let mut total_goodness = Tensor::zeros(
+            (batch_size, self.num_classes),
+            candle_core::DType::F32,
+            &self.device,
+        )?;
+
         // We evaluate T timesteps.
         for _ in 0..self.timesteps {
             self.step(&input_tensor, None)?;
 
             // Accumulate instantaneous goodness at each timestep
-            for layer in self.layers.iter().skip(1) { // Skip input layer
+            for layer in self.layers.iter().skip(1) {
+                // Skip input layer
                 let h = layer.output()?; // Shape: (size, batch_size)
                 let h_t = h.transpose(0, 1)?.contiguous()?; // (batch_size, size)
-                
+
                 let chunks = h_t.chunk(self.num_classes, 1)?;
                 let mut layer_goodnesses = Vec::new();
                 for chunk in chunks {
@@ -227,23 +236,32 @@ impl CSDPMultiModel {
                 total_goodness = total_goodness.broadcast_add(&layer_g_tensor)?;
             }
         }
-        
+
         // Average the goodness across the timesteps
         let total_goodness = (total_goodness / self.timesteps as f64)?;
-        
+
         if was_learning {
             self.enable_learning();
         }
-        
+
         Ok(total_goodness)
     }
 
-    pub fn train(&mut self, x: &Tensor, label_classes: &Tensor, record_layer_id: Option<usize>) -> CandleResult<Option<Vec<Vec<f32>>>> {
+    pub fn train(
+        &mut self,
+        x: &Tensor,
+        label_classes: &Tensor,
+        record_layer_id: Option<usize>,
+    ) -> CandleResult<Option<Vec<Vec<f32>>>> {
         let x_t = x.transpose(0, 1)?.contiguous()?;
         let batch_size = x_t.dim(1)?;
         self.reset(batch_size)?;
-        
-        let mut history = if record_layer_id.is_some() { Some(Vec::with_capacity(self.timesteps)) } else { None };
+
+        let mut history = if record_layer_id.is_some() {
+            Some(Vec::with_capacity(self.timesteps))
+        } else {
+            None
+        };
 
         // Let the STDP rules train based on MultiClassModSignal over T timesteps
         for _ in 0..self.timesteps {
@@ -258,7 +276,7 @@ impl CSDPMultiModel {
                 }
             }
         }
-        
+
         Ok(history)
     }
 
@@ -299,7 +317,7 @@ impl CSDPMultiModel {
             let output = layer.output()?;
             let output_vec = output.flatten_all()?.to_vec1::<f32>()?;
             let spike_count = output_vec.iter().filter(|&&v| v > 0.5).count();
-            
+
             layers.push(crate::visualization::LayerVisInfo {
                 id: i,
                 name: self.layer_metadata[i].name.clone(),

@@ -67,8 +67,10 @@ fn calc_loss_reward_modulated(
 
     let abs_logit_neg = logit.abs()?.affine(-1.0, 0.0)?;
     let term = abs_logit_neg.exp()?.affine(1.0, 1.0)?.log()?;
-    
-    let log_p = term.add(&logit.maximum(&logit.zeros_like()?)?)?.affine(-1.0, 0.0)?;
+
+    let log_p = term
+        .add(&logit.maximum(&logit.zeros_like()?)?)?
+        .affine(-1.0, 0.0)?;
     let log_1_minus_p = log_p.sub(&logit)?;
 
     // Loss = - [ Y * log_p * R + (1 - Y) * log_1_minus_p ]

@@ -1,7 +1,7 @@
 use crate::layer::bernoulli::BernoulliLayer;
 use crate::layer::lif::LIFLayer;
-use crate::layer::one_hot::OneHotLayer;
 use crate::layer::mod_signal::reward_modulated::RewardModulatedModSignal;
+use crate::layer::one_hot::OneHotLayer;
 use crate::layer::{Layer, LayerMetadata, LayerPosition};
 use crate::synapse::csdp::CSDP;
 use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
@@ -466,7 +466,8 @@ impl RLModel2 {
     /// gets the total sum of output activities of all layers excluding input layers
     pub fn get_model_activity(&self) -> CandleResult<Tensor> {
         let batch_size = self.layers[0].output()?.dims().get(1).copied().unwrap_or(1);
-        let mut total_activity = Tensor::zeros((1, batch_size), candle_core::DType::F32, &self.device)?;
+        let mut total_activity =
+            Tensor::zeros((1, batch_size), candle_core::DType::F32, &self.device)?;
 
         for layer in &self.layers {
             let output = layer.output()?;

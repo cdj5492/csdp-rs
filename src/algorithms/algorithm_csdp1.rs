@@ -25,8 +25,15 @@ impl Algorithm1 {
         device: Device,
         input_bounds: Option<Vec<usize>>,
     ) -> Result<Self, Box<dyn Error>> {
-        let model = RLModel1::new(state_size, action_size, hidden_sizes, &device, dt, input_bounds)
-            .expect("Failed to create RLModel1");
+        let model = RLModel1::new(
+            state_size,
+            action_size,
+            hidden_sizes,
+            &device,
+            dt,
+            input_bounds,
+        )
+        .expect("Failed to create RLModel1");
 
         Ok(Self {
             model,
@@ -38,11 +45,12 @@ impl Algorithm1 {
         })
     }
 
-    fn get_action_tensor(
-        &self,
-        action_idx: usize,
-    ) -> Result<Tensor, Box<dyn Error>> {
-        Ok(Tensor::from_vec(vec![action_idx as f32], (1, 1), &self.device)?)
+    fn get_action_tensor(&self, action_idx: usize) -> Result<Tensor, Box<dyn Error>> {
+        Ok(Tensor::from_vec(
+            vec![action_idx as f32],
+            (1, 1),
+            &self.device,
+        )?)
     }
 }
 
@@ -119,7 +127,9 @@ impl Algorithm for Algorithm1 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -309,7 +319,9 @@ impl Algorithm for Algorithm1 {
             };
             log::info!(
                 "[Episode {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, inf_aps, ep_s
+                episode,
+                inf_aps,
+                ep_s
             );
         } // end of episodes
 

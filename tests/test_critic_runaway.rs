@@ -60,7 +60,7 @@ fn test_investigate_runaway_firing() {
         model.critic.is_learning = true;
         let label_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
         let reward_tensor = Tensor::from_vec(vec![1.0f32], (1, 1), &device).unwrap();
-        
+
         for layer in model.actor.layers.iter_mut() {
             layer.set_positive_sample(&label_tensor);
         }

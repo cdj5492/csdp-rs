@@ -74,14 +74,14 @@ impl Layer for OneHotLayer {
         // If input size matches number of variables, perform expansion
         if input.dims().len() >= 1 && input.dims()[0] == self.bounds.len() {
             let batch_size = input.dims().get(1).copied().unwrap_or(1);
-            
+
             // Reformat into 2D if it's not (e.g. 1D tensor)
             let input_2d = if input.dims().len() == 1 {
                 input.reshape((input.dims()[0], 1))?
             } else {
                 input.clone()
             };
-            
+
             let data = input_2d.to_vec2::<f32>()?;
             let mut expanded = vec![0.0f32; self.size * batch_size];
             for v in 0..self.bounds.len() {
@@ -93,7 +93,8 @@ impl Layer for OneHotLayer {
                     }
                 }
             }
-            let expanded_tensor = Tensor::from_vec(expanded, (self.size, batch_size), input.device())?;
+            let expanded_tensor =
+                Tensor::from_vec(expanded, (self.size, batch_size), input.device())?;
             self.inputs = self.inputs.add(&expanded_tensor)?;
         } else {
             // standard addition if already expanded or from synapses
@@ -112,7 +113,8 @@ impl Layer for OneHotLayer {
         self.inputs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         self.probs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         self.spikes = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
-        self.dummy_mod_signal = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.dummy_mod_signal =
+            Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         Ok(())
     }
 

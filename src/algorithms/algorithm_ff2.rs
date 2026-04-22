@@ -3,10 +3,10 @@ use crate::environment::Environment;
 use crate::models::ff_model::FFModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
+use rand::Rng;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use rand::Rng;
 
 pub struct AlgorithmFF2 {
     pub model: FFModel,
@@ -27,7 +27,8 @@ impl AlgorithmFF2 {
         let input_size = action_size + state_size * 2;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
+        let model =
+            FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
@@ -76,7 +77,7 @@ impl Algorithm for AlgorithmFF2 {
             let mut total_rewards = vec![0.0; n_envs];
 
             let inference_start = Instant::now();
-            
+
             for _step in 0..self.n_steps_per_episode {
                 let mut current_states = Vec::new();
                 for e in envs.iter_mut() {
@@ -128,7 +129,9 @@ impl Algorithm for AlgorithmFF2 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -205,10 +208,22 @@ impl Algorithm for AlgorithmFF2 {
                         neg_input2.extend(s_t.clone());
                         neg_input2.extend(s_t_plus_m.clone());
 
-                        let p_t = Tensor::from_vec(pos_input, (1, action_size + state_size * 2), &self.device)?;
-                        let n1_t = Tensor::from_vec(neg_input1, (1, action_size + state_size * 2), &self.device)?;
-                        let n2_t = Tensor::from_vec(neg_input2, (1, action_size + state_size * 2), &self.device)?;
-                        
+                        let p_t = Tensor::from_vec(
+                            pos_input,
+                            (1, action_size + state_size * 2),
+                            &self.device,
+                        )?;
+                        let n1_t = Tensor::from_vec(
+                            neg_input1,
+                            (1, action_size + state_size * 2),
+                            &self.device,
+                        )?;
+                        let n2_t = Tensor::from_vec(
+                            neg_input2,
+                            (1, action_size + state_size * 2),
+                            &self.device,
+                        )?;
+
                         train_data.push((p_t.clone(), n1_t));
                         train_data.push((p_t.clone(), n2_t));
                     }
@@ -251,7 +266,10 @@ impl Algorithm for AlgorithmFF2 {
             };
             log::info!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, total_rewards[0], inf_aps, ep_s
+                episode,
+                total_rewards[0],
+                inf_aps,
+                ep_s
             );
         }
 

@@ -160,7 +160,7 @@ impl Algorithm for AlgorithmCSDP5 {
         }
 
         let gamma = 0.9f32;
-        let tau = 0.5f32; 
+        let tau = 0.5f32;
 
         let checkpoint_dir = std::path::Path::new(CHECKPOINT_DIR);
 
@@ -233,7 +233,11 @@ impl Algorithm for AlgorithmCSDP5 {
                             action_one_hot[a] = ACTION_SCALE; // amplify action parameter
                             input_vec.extend(action_one_hot);
 
-                            let t = Tensor::from_vec(input_vec, (1, state_size * 2 + action_size), &self.device)?;
+                            let t = Tensor::from_vec(
+                                input_vec,
+                                (1, state_size * 2 + action_size),
+                                &self.device,
+                            )?;
                             batch_inputs.push(t);
                             total_inference_actions += 1;
                         }
@@ -250,7 +254,10 @@ impl Algorithm for AlgorithmCSDP5 {
                             let end_idx = start_idx + self.num_classes;
                             let class_scores = &scores[start_idx..end_idx];
 
-                            let max_g = class_scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let max_g = class_scores
+                                .iter()
+                                .cloned()
+                                .fold(f32::NEG_INFINITY, f32::max);
                             let mut exp_sum = 0.0;
                             let mut exps = Vec::with_capacity(self.num_classes);
                             for &g in class_scores {
@@ -282,7 +289,10 @@ impl Algorithm for AlgorithmCSDP5 {
                             let start_idx = best_a * self.num_classes;
                             let end_idx = start_idx + self.num_classes;
                             let class_scores = &scores[start_idx..end_idx];
-                            let max_g = class_scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let max_g = class_scores
+                                .iter()
+                                .cloned()
+                                .fold(f32::NEG_INFINITY, f32::max);
                             let mut exp_sum = 0.0;
                             let mut exps = Vec::with_capacity(self.num_classes);
                             for &g in class_scores {
@@ -292,8 +302,12 @@ impl Algorithm for AlgorithmCSDP5 {
                             }
                             env0_return_probs = exps.iter().map(|e| e / exp_sum).collect();
 
-                            let max_a_exp = exp_vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                            let a_exps: Vec<f32> = exp_vals.iter().map(|&v| ((v - max_a_exp) / tau).exp()).collect();
+                            let max_a_exp =
+                                exp_vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                            let a_exps: Vec<f32> = exp_vals
+                                .iter()
+                                .map(|&v| ((v - max_a_exp) / tau).exp())
+                                .collect();
                             let a_sum: f32 = a_exps.iter().sum();
                             env0_action_probs = a_exps.iter().map(|e| e / a_sum).collect();
                         }
@@ -303,7 +317,8 @@ impl Algorithm for AlgorithmCSDP5 {
                 for env_idx in 0..n_envs {
                     let a = best_actions[env_idx];
                     let r = envs[env_idx].evaluate_action(&current_states[env_idx], a);
-                    let state_f32: Vec<f32> = current_states[env_idx].iter().map(|&x| x as f32).collect();
+                    let state_f32: Vec<f32> =
+                        current_states[env_idx].iter().map(|&x| x as f32).collect();
                     episode_data[env_idx].push((state_f32, a, r as f32));
                     raw_rewards[env_idx] += r;
 
@@ -319,32 +334,43 @@ impl Algorithm for AlgorithmCSDP5 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
 
                         if !env0_return_probs.is_empty() {
                             state.model_probabilities = Some(vec![
                                 ("Action Distribution".to_string(), env0_action_probs.clone()),
-                                ("Return Probabilities".to_string(), env0_return_probs.clone()),
+                                (
+                                    "Return Probabilities".to_string(),
+                                    env0_return_probs.clone(),
+                                ),
                             ]);
                         }
                     }
-                    
+
                     let mut should_break = false;
                     loop {
                         let (is_paused, should_close, delay) = vs_arc
                             .try_lock()
                             .map(|state| (state.is_paused, state.should_close, state.delay_ms))
                             .unwrap_or((false, false, 0));
-                        if should_close { return Ok(()); }
+                        if should_close {
+                            return Ok(());
+                        }
                         if !is_paused {
-                            if delay > 0 { std::thread::sleep(std::time::Duration::from_millis(delay)); }
+                            if delay > 0 {
+                                std::thread::sleep(std::time::Duration::from_millis(delay));
+                            }
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(50));
                     }
-                    if should_break { break; }
+                    if should_break {
+                        break;
+                    }
                 }
             }
             total_inference_time += inference_start.elapsed();
@@ -371,10 +397,10 @@ impl Algorithm for AlgorithmCSDP5 {
             if self.buffer.len() >= 1000 {
                 let mut returns: Vec<f32> = self.buffer.iter().map(|x| x.2).collect();
                 returns.sort_by(|a, b| a.partial_cmp(b).unwrap());
-                
+
                 let min_idx = (returns.len() as f32 * 0.05) as usize;
                 let max_idx = (returns.len() as f32 * 0.95) as usize;
-                
+
                 self.min_return = returns[min_idx];
                 self.max_return = returns[max_idx];
                 self.bounds_initialized = true;
@@ -388,34 +414,41 @@ impl Algorithm for AlgorithmCSDP5 {
             if self.buffer.len() >= 1000 && self.bounds_initialized {
                 // Train batch
                 let batch_size = 256.min(self.buffer.len() / 4);
-                let mut batch_inputs = Vec::with_capacity(batch_size * (state_size * 2 + action_size));
+                let mut batch_inputs =
+                    Vec::with_capacity(batch_size * (state_size * 2 + action_size));
                 let mut batch_classes = Vec::with_capacity(batch_size);
 
                 for _ in 0..batch_size {
                     let idx = rng.r#gen_range(0..self.buffer.len());
                     let (s, a, mc_ret) = &self.buffer[idx];
-                    
+
                     let mut input_vec = Vec::with_capacity(state_size * 2 + action_size);
                     input_vec.extend(s.iter().copied());
                     input_vec.extend(vec![0.0; state_size]); // Zero diff for basic random sample? 
-                                                             // FFMulti2 just pushed current block diff=0 or identical
-                    
+                    // FFMulti2 just pushed current block diff=0 or identical
+
                     let mut action_one_hot = vec![0.0f32; action_size];
                     action_one_hot[*a] = ACTION_SCALE;
                     input_vec.extend(action_one_hot);
-                    
+
                     batch_inputs.extend(input_vec);
-                    
+
                     let target_class = self.value_to_class(*mc_ret);
                     batch_classes.push(target_class as f32);
                 }
 
-                let x = Tensor::from_vec(batch_inputs, (1, batch_size * (state_size * 2 + action_size)), &self.device)?
-                    .reshape((batch_size, state_size * 2 + action_size))?;
-                
+                let x = Tensor::from_vec(
+                    batch_inputs,
+                    (1, batch_size * (state_size * 2 + action_size)),
+                    &self.device,
+                )?
+                .reshape((batch_size, state_size * 2 + action_size))?;
+
                 let y = Tensor::from_vec(batch_classes, (1, batch_size), &self.device)?;
 
-                let record_layer_id = vis_state.as_ref().and_then(|vs| vs.try_lock().ok().and_then(|s| s.selected_layer_id));
+                let record_layer_id = vis_state
+                    .as_ref()
+                    .and_then(|vs| vs.try_lock().ok().and_then(|s| s.selected_layer_id));
 
                 // Train the entire SNN for exactly batch_size using 40 timesteps!
                 epoch_spike_history = self.model.train(&x, &y, record_layer_id)?;
@@ -453,7 +486,9 @@ impl Algorithm for AlgorithmCSDP5 {
                         let epoch_rewards = state.epoch_rewards.clone();
                         state.save_requested = false;
                         drop(state);
-                        if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards) {
+                        if let Err(e) =
+                            self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards)
+                        {
                             log::error!("Manual save failed: {}", e);
                         }
                     } else if state.load_requested {
@@ -491,11 +526,15 @@ impl Algorithm for AlgorithmCSDP5 {
 
             let inf_aps = if total_inference_time.as_secs_f32() > 0.0 {
                 total_inference_actions as f32 / total_inference_time.as_secs_f32()
-            } else { 0.0 };
-            
+            } else {
+                0.0
+            };
+
             let ep_s = if total_training_time.as_secs_f32() > 0.0 {
                 total_epochs as f32 / total_training_time.as_secs_f32()
-            } else { 0.0 };
+            } else {
+                0.0
+            };
 
             log::info!(
                 "[Episode {} Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {} | Bounds [{:.2}, {:.2}]",

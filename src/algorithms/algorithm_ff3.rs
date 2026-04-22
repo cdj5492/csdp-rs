@@ -27,7 +27,8 @@ impl AlgorithmFF3 {
         let epochs_per_episode = 100;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
+        let model =
+            FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
@@ -53,7 +54,7 @@ impl Algorithm for AlgorithmFF3 {
         let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
-        
+
         let n_envs = 16;
         let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
         for _ in 1..n_envs {
@@ -67,7 +68,7 @@ impl Algorithm for AlgorithmFF3 {
                 e.reset()?;
             }
             std::thread::sleep(Duration::from_millis(50)); // wait for environment to settle
-            
+
             // Format: episode_data[env_idx] = vec of (state_f32, action)
             let mut episode_data: Vec<Vec<(Vec<f32>, usize)>> = vec![Vec::new(); n_envs];
             let mut total_rewards = vec![0.0; n_envs];
@@ -101,14 +102,14 @@ impl Algorithm for AlgorithmFF3 {
                 for (env_idx, action) in best_actions.into_iter().enumerate() {
                     let e = &mut envs[env_idx];
                     let current_state = &current_states[env_idx];
-                    
+
                     let state_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();
                     episode_data[env_idx].push((state_f32, action));
 
                     total_rewards[env_idx] += e.evaluate_action(current_state, action);
                     e.apply_action(action)?;
                 }
-                
+
                 std::thread::sleep(Duration::from_millis(10));
 
                 if let Some(ref vis_state_arc) = vis_state {
@@ -118,7 +119,9 @@ impl Algorithm for AlgorithmFF3 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -167,7 +170,8 @@ impl Algorithm for AlgorithmFF3 {
             let mut neg_tensors = Vec::new();
 
             // 1. Sort environments by reward (lowest to highest)
-            let mut env_ranks: Vec<(usize, f64)> = total_rewards.iter().copied().enumerate().collect();
+            let mut env_ranks: Vec<(usize, f64)> =
+                total_rewards.iter().copied().enumerate().collect();
             env_ranks.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
             let mut rng = rand::thread_rng();
@@ -176,14 +180,15 @@ impl Algorithm for AlgorithmFF3 {
             for (rank, &(env_idx, _r)) in env_ranks.iter().enumerate() {
                 // r = 0..15 -> 0% .. 100%
                 let p_pos = rank as f32 / (k - 1.0);
-                
+
                 for (state, action) in &episode_data[env_idx] {
                     let mut input_vec = vec![0.0; action_size];
                     input_vec[*action] = 1.0;
                     input_vec.extend(state.iter().copied());
-                    
-                    let tensor = Tensor::from_vec(input_vec, (1, action_size + state_size), &self.device)?;
-                    
+
+                    let tensor =
+                        Tensor::from_vec(input_vec, (1, action_size + state_size), &self.device)?;
+
                     let rand_val: f32 = rng.r#gen();
                     if rand_val < p_pos {
                         pos_tensors.push(tensor);
@@ -196,14 +201,19 @@ impl Algorithm for AlgorithmFF3 {
             if !pos_tensors.is_empty() && !neg_tensors.is_empty() {
                 log::info!(
                     "Rank partitioning created: {} positive / {} negative samples",
-                    pos_tensors.len(), neg_tensors.len()
+                    pos_tensors.len(),
+                    neg_tensors.len()
                 );
                 let pos_batch = Tensor::cat(&pos_tensors, 0)?;
                 let neg_batch = Tensor::cat(&neg_tensors, 0)?;
                 self.model.train(&pos_batch, &neg_batch)?;
                 _total_iteration += 1;
             } else {
-                log::info!("Warning: Skipping batch training (batch imbalance). Pos: {}, Neg: {}", pos_tensors.len(), neg_tensors.len());
+                log::info!(
+                    "Warning: Skipping batch training (batch imbalance). Pos: {}, Neg: {}",
+                    pos_tensors.len(),
+                    neg_tensors.len()
+                );
             }
 
             let training_elapsed = training_start.elapsed();
@@ -222,7 +232,10 @@ impl Algorithm for AlgorithmFF3 {
             };
             log::info!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, total_rewards[0], inf_aps, ep_s
+                episode,
+                total_rewards[0],
+                inf_aps,
+                ep_s
             );
         }
 

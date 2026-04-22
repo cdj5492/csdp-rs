@@ -12,7 +12,13 @@ pub struct FFLayer {
 }
 
 impl FFLayer {
-    pub fn new(in_features: usize, out_features: usize, varmap: &mut VarMap, device: &Device, num_epochs: usize) -> CandleResult<Self> {
+    pub fn new(
+        in_features: usize,
+        out_features: usize,
+        varmap: &mut VarMap,
+        device: &Device,
+        num_epochs: usize,
+    ) -> CandleResult<Self> {
         let vb = VarBuilder::from_varmap(varmap, DType::F32, device);
         let linear = linear(in_features, out_features, vb.pp("linear"))?;
 
@@ -37,29 +43,39 @@ impl FFLayer {
         out.gelu()
     }
 
-    pub fn train(&mut self, x_pos: &Tensor, x_neg: &Tensor, layer_idx: usize) -> CandleResult<(Tensor, Tensor)> {
+    pub fn train(
+        &mut self,
+        x_pos: &Tensor,
+        x_neg: &Tensor,
+        layer_idx: usize,
+    ) -> CandleResult<(Tensor, Tensor)> {
         for epoch in 0..self.num_epochs {
             let out_pos = self.forward(x_pos)?;
             let g_pos = out_pos.sqr()?.mean_keepdim(1)?;
-            
+
             let out_neg = self.forward(x_neg)?;
             let g_neg = out_neg.sqr()?.mean_keepdim(1)?;
-            
-            let pos_term = g_pos.affine(-1.0, self.threshold)?; 
+
+            let pos_term = g_pos.affine(-1.0, self.threshold)?;
             let neg_term = g_neg.affine(1.0, -self.threshold)?;
-            
+
             let concat = Tensor::cat(&[&pos_term, &neg_term], 0)?;
             let concat_safe = concat.clamp(-50.0f32, 50.0f32)?; // prevent loss explosion
             let loss = (concat_safe.exp()? + 1.0)?.log()?.mean_all()?;
-            
+
             self.opt.backward_step(&loss)?;
 
             if epoch % 200 == 0 || epoch == self.num_epochs - 1 {
                 let current_loss = loss.to_vec0::<f32>()?;
-                log::info!("Layer {} - Epoch {} Loss: {:.4}", layer_idx, epoch, current_loss);
+                log::info!(
+                    "Layer {} - Epoch {} Loss: {:.4}",
+                    layer_idx,
+                    epoch,
+                    current_loss
+                );
             }
         }
-        
+
         Ok((self.forward(x_pos)?.detach(), self.forward(x_neg)?.detach()))
     }
 }
@@ -85,7 +101,7 @@ impl FFModel {
     pub fn train(&mut self, x_pos: &Tensor, x_neg: &Tensor) -> CandleResult<()> {
         let mut h_pos = x_pos.clone();
         let mut h_neg = x_neg.clone();
-        
+
         for (idx, layer) in self.layers.iter_mut().enumerate() {
             let (next_pos, next_neg) = layer.train(&h_pos, &h_neg, idx)?;
             h_pos = next_pos;
@@ -98,17 +114,18 @@ impl FFModel {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         let batched_inputs = Tensor::cat(inputs, 0)?;
         let mut h = batched_inputs;
-        let mut total_goodnesses = Tensor::zeros((inputs.len(),), candle_core::DType::F32, inputs[0].device())?;
-        
+        let mut total_goodnesses =
+            Tensor::zeros((inputs.len(),), candle_core::DType::F32, inputs[0].device())?;
+
         for layer in &self.layers {
             h = layer.forward(&h)?;
             let goodness = h.sqr()?.mean_keepdim(1)?.squeeze(1)?;
             total_goodnesses = total_goodnesses.broadcast_add(&goodness)?;
         }
-        
+
         let best_scores: Vec<f32> = total_goodnesses.to_vec1()?;
         // log::info!("Predict scores: {:?}", best_scores); // Muted print for vectorization scale
 
@@ -123,7 +140,7 @@ impl FFModel {
             }
             best_indices.push(best_idx);
         }
-        
+
         Ok(best_indices)
     }
 
@@ -131,17 +148,18 @@ impl FFModel {
         if inputs.is_empty() {
             return Ok(Vec::new());
         }
-        
+
         let batched_inputs = Tensor::cat(inputs, 0)?;
         let mut h = batched_inputs;
-        let mut total_goodnesses = Tensor::zeros((inputs.len(),), candle_core::DType::F32, inputs[0].device())?;
-        
+        let mut total_goodnesses =
+            Tensor::zeros((inputs.len(),), candle_core::DType::F32, inputs[0].device())?;
+
         for layer in &self.layers {
             h = layer.forward(&h)?;
             let goodness = h.sqr()?.mean_keepdim(1)?.squeeze(1)?;
             total_goodnesses = total_goodnesses.broadcast_add(&goodness)?;
         }
-        
+
         total_goodnesses.to_vec1()
     }
 }

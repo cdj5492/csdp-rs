@@ -157,7 +157,9 @@ impl Algorithm for AlgorithmFF4 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -227,7 +229,9 @@ impl Algorithm for AlgorithmFF4 {
             if self.buffer.len() >= 1000 {
                 let mut sorted_indices: Vec<usize> = (0..self.buffer.len()).collect();
                 // Sort ascending: index 0 is worst, index len-1 is best
-                sorted_indices.sort_unstable_by(|&a, &b| self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap());
+                sorted_indices.sort_unstable_by(|&a, &b| {
+                    self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap()
+                });
 
                 let batch_size = std::cmp::min(256, self.buffer.len() / 4);
                 let mut pos_tensors = Vec::new();
@@ -241,7 +245,11 @@ impl Algorithm for AlgorithmFF4 {
                     let mut p_vec = vec![0.0; action_size];
                     p_vec[best.1] = 1.0;
                     p_vec.extend(best.0.iter().copied());
-                    pos_tensors.push(Tensor::from_vec(p_vec, (1, action_size + state_size), &self.device)?);
+                    pos_tensors.push(Tensor::from_vec(
+                        p_vec,
+                        (1, action_size + state_size),
+                        &self.device,
+                    )?);
 
                     // Negative Sample: The EXACT SAME state + a random alternative action
                     let mut a_random = rng.r#gen_range(0..action_size);
@@ -251,12 +259,16 @@ impl Algorithm for AlgorithmFF4 {
                     let mut n_vec = vec![0.0; action_size];
                     n_vec[a_random] = 1.0;
                     n_vec.extend(best.0.iter().copied());
-                    neg_tensors.push(Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?);
+                    neg_tensors.push(Tensor::from_vec(
+                        n_vec,
+                        (1, action_size + state_size),
+                        &self.device,
+                    )?);
                 }
 
                 let pos_batch = Tensor::cat(&pos_tensors, 0)?;
                 let neg_batch = Tensor::cat(&neg_tensors, 0)?;
-                
+
                 self.model.train(&pos_batch, &neg_batch)?;
                 _total_iteration += 1;
                 total_epochs += self.epochs_per_episode;

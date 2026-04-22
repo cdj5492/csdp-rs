@@ -84,7 +84,8 @@ impl Layer for BernoulliLayer {
         self.probs = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         self.spikes = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         self.rng_vals = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
-        self.dummy_mod_signal = Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
+        self.dummy_mod_signal =
+            Tensor::zeros((self.size, batch_size), DType::F32, self.probs.device())?;
         Ok(())
     }
 

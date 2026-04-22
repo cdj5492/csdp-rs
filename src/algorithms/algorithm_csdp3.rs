@@ -192,7 +192,11 @@ impl Algorithm for Algorithm3 {
 
         for episode in 1..=self.n_episodes {
             if let Some(ref vis_state_arc) = vis_state {
-                if vis_state_arc.try_lock().map(|s| s.should_close).unwrap_or(false) {
+                if vis_state_arc
+                    .try_lock()
+                    .map(|s| s.should_close)
+                    .unwrap_or(false)
+                {
                     return Ok(());
                 }
             }
@@ -220,7 +224,7 @@ impl Algorithm for Algorithm3 {
                         std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                 }
-                
+
                 total_iteration += 1;
                 let current_state = env.get_state()?;
                 let state_raw_f32: Vec<f32> = current_state.iter().map(|&x| x as f32).collect();
@@ -276,7 +280,9 @@ impl Algorithm for Algorithm3 {
 
                 log::info!(
                     "Step {}: q_base = {:.2}, q_pert = {:.2}",
-                    step, q_base, q_pert
+                    step,
+                    q_base,
+                    q_pert
                 );
 
                 // 3. Contrastive Label Assignment for Actor
@@ -372,7 +378,9 @@ impl Algorithm for Algorithm3 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
 

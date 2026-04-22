@@ -26,15 +26,12 @@ fn test_ff_logic_learning() {
     let hidden_sizes = vec![64, 32];
     let mut dims = vec![input_size];
     dims.extend(hidden_sizes);
-    
+
     let mut model = FFModel::new(&dims, &device, 1000).unwrap();
 
     let x_data = vec![
-        0.0f32, 0.0, 0.0, 0.0, 
-        0.0, 0.0, 0.0, 1.0, 
-        0.0, 0.0, 1.0, 0.0, 
-        0.0, 0.0, 1.0, 1.0,
-    ]; 
+        0.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+    ];
     let y_data = vec![0, 1, 1, 0];
     let x = Tensor::from_vec(x_data, (4, 4), &device).unwrap();
 
@@ -51,9 +48,9 @@ fn test_ff_logic_learning() {
             prediction_inputs.push(overlay_y_on_x(&sample, &[label], 2).unwrap());
         }
     }
-    
+
     let best_classes = model.predict(&prediction_inputs, 2).unwrap();
-    
+
     println!("Predicted: {:?}", best_classes);
     assert_eq!(best_classes, y_data);
 }

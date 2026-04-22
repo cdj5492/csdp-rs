@@ -3,8 +3,8 @@ use crate::environment::Environment;
 use crate::models::ff_model::FFModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
-use rand::seq::SliceRandom;
 use rand::Rng;
+use rand::seq::SliceRandom;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -29,7 +29,8 @@ impl AlgorithmFFSAC {
         let epochs_per_episode = 100;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
+        let model =
+            FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
@@ -56,7 +57,7 @@ impl Algorithm for AlgorithmFFSAC {
         let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
-        
+
         let n_envs = 16;
         let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
         for _ in 1..n_envs {
@@ -64,11 +65,15 @@ impl Algorithm for AlgorithmFFSAC {
         }
 
         let gamma = 0.99f32;
-        let tau = 0.1f32; 
+        let tau = 0.1f32;
 
         for episode in 1..=self.n_episodes {
             if let Some(ref vis_state_arc) = vis_state {
-                if vis_state_arc.try_lock().map(|s| s.should_close).unwrap_or(false) {
+                if vis_state_arc
+                    .try_lock()
+                    .map(|s| s.should_close)
+                    .unwrap_or(false)
+                {
                     return Ok(());
                 }
             }
@@ -78,7 +83,7 @@ impl Algorithm for AlgorithmFFSAC {
                 e.reset()?;
             }
             std::thread::sleep(Duration::from_millis(50));
-            
+
             let mut raw_rewards = vec![0.0; n_envs];
             let inference_start = Instant::now();
             let mut rng = rand::thread_rng();
@@ -102,7 +107,7 @@ impl Algorithm for AlgorithmFFSAC {
                         std::thread::sleep(std::time::Duration::from_millis(50));
                     }
                 }
-                
+
                 let mut current_states = Vec::new();
                 for e in envs.iter_mut() {
                     current_states.push(e.get_state()?);
@@ -125,25 +130,31 @@ impl Algorithm for AlgorithmFFSAC {
                 }
 
                 let goodness_scores = self.model.predict_scores(&all_action_inputs)?;
-                
+
                 for (env_idx, env_state) in current_states.iter().enumerate() {
                     let e = &mut envs[env_idx];
                     let chunk_start = env_idx * action_size;
                     let chunk_scores = &goodness_scores[chunk_start..chunk_start + action_size];
-                    
-                    let max_g = chunk_scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-                    
+
+                    let max_g = chunk_scores
+                        .iter()
+                        .cloned()
+                        .fold(f32::NEG_INFINITY, f32::max);
+
                     let mut exp_sum = 0.0;
-                    let exps: Vec<f32> = chunk_scores.iter().map(|&g| {
-                        let e_val = ((g - max_g) / tau).exp();
-                        exp_sum += e_val;
-                        e_val
-                    }).collect();
-                    
+                    let exps: Vec<f32> = chunk_scores
+                        .iter()
+                        .map(|&g| {
+                            let e_val = ((g - max_g) / tau).exp();
+                            exp_sum += e_val;
+                            e_val
+                        })
+                        .collect();
+
                     let rand_val: f32 = rng.r#gen::<f32>() * exp_sum;
                     let mut cumulative = 0.0;
                     let mut selected_action = action_size - 1;
-                    
+
                     for (a, &e_val) in exps.iter().enumerate() {
                         cumulative += e_val;
                         if rand_val <= cumulative {
@@ -151,18 +162,25 @@ impl Algorithm for AlgorithmFFSAC {
                             break;
                         }
                     }
-                    
-                    let state_f32: Vec<f32> = env_state.iter().map(|&x| (x as f32) / 50.0).collect();
+
+                    let state_f32: Vec<f32> =
+                        env_state.iter().map(|&x| (x as f32) / 50.0).collect();
                     let step_reward = e.evaluate_action(env_state, selected_action);
-                    
+
                     e.apply_action(selected_action)?;
                     let next_state = e.get_state()?;
-                    let next_state_f32: Vec<f32> = next_state.iter().map(|&x| (x as f32) / 50.0).collect();
-                    
-                    self.buffer.push((state_f32, selected_action, step_reward as f32, next_state_f32));
+                    let next_state_f32: Vec<f32> =
+                        next_state.iter().map(|&x| (x as f32) / 50.0).collect();
+
+                    self.buffer.push((
+                        state_f32,
+                        selected_action,
+                        step_reward as f32,
+                        next_state_f32,
+                    ));
                     raw_rewards[env_idx] += step_reward;
                 }
-                
+
                 if let Some(ref vis_state_arc) = vis_state {
                     if let Ok(mut state) = vis_state_arc.try_lock() {
                         let env_state = envs[0].get_state()?;
@@ -170,7 +188,9 @@ impl Algorithm for AlgorithmFFSAC {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -182,7 +202,8 @@ impl Algorithm for AlgorithmFFSAC {
 
             if let Some(ref vis_state_arc) = vis_state {
                 if let Ok(mut state) = vis_state_arc.try_lock() {
-                    let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / (n_envs as f32 * self.n_steps_per_episode as f32);
+                    let avg_reward = raw_rewards.iter().sum::<f64>() as f32
+                        / (n_envs as f32 * self.n_steps_per_episode as f32);
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
@@ -196,7 +217,7 @@ impl Algorithm for AlgorithmFFSAC {
 
             let training_start = Instant::now();
             let batch_size = 256;
-            
+
             if self.buffer.len() >= batch_size {
                 let mut pos_tensors = Vec::new();
                 let mut neg_tensors = Vec::new();
@@ -210,17 +231,25 @@ impl Algorithm for AlgorithmFFSAC {
 
                 for &idx in batch_indices {
                     let (s, a, _r, s_next) = &self.buffer[idx];
-                    
+
                     let mut c_vec = vec![0.0; action_size];
                     c_vec[*a] = 1.0;
                     c_vec.extend(s.iter().copied());
-                    current_eval_inputs.push(Tensor::from_vec(c_vec, (1, action_size + state_size), &self.device)?);
+                    current_eval_inputs.push(Tensor::from_vec(
+                        c_vec,
+                        (1, action_size + state_size),
+                        &self.device,
+                    )?);
 
                     for next_a in 0..action_size {
                         let mut n_vec = vec![0.0; action_size];
                         n_vec[next_a] = 1.0;
                         n_vec.extend(s_next.iter().copied());
-                        next_eval_inputs.push(Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?);
+                        next_eval_inputs.push(Tensor::from_vec(
+                            n_vec,
+                            (1, action_size + state_size),
+                            &self.device,
+                        )?);
                     }
                 }
 
@@ -230,17 +259,20 @@ impl Algorithm for AlgorithmFFSAC {
                 for (i, &idx) in batch_indices.iter().enumerate() {
                     let (s, a, r, _s_next) = &self.buffer[idx];
                     let current_g = current_scores[i];
-                    
+
                     let n_start = i * action_size;
                     let next_g_chunk = &next_scores_flat[n_start..n_start + action_size];
-                    
-                    let max_next_g = next_g_chunk.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+                    let max_next_g = next_g_chunk
+                        .iter()
+                        .cloned()
+                        .fold(f32::NEG_INFINITY, f32::max);
                     let mut sum_exp = 0.0;
                     for &g in next_g_chunk {
                         sum_exp += ((g - max_next_g) / tau).exp();
                     }
                     let v_next = tau * sum_exp.ln() + max_next_g;
-                    
+
                     let target_g = r + gamma * v_next;
                     let delta = target_g - current_g;
 
@@ -252,12 +284,14 @@ impl Algorithm for AlgorithmFFSAC {
                     let mut p_vec = vec![0.0; action_size];
                     p_vec[*a] = 1.0;
                     p_vec.extend(s.iter().copied());
-                    let t_actual = Tensor::from_vec(p_vec, (1, action_size + state_size), &self.device)?;
+                    let t_actual =
+                        Tensor::from_vec(p_vec, (1, action_size + state_size), &self.device)?;
 
                     let mut n_vec = vec![0.0; action_size];
                     n_vec[a_random] = 1.0;
                     n_vec.extend(s.iter().copied());
-                    let t_random = Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?;
+                    let t_random =
+                        Tensor::from_vec(n_vec, (1, action_size + state_size), &self.device)?;
 
                     if delta > 0.1 {
                         pos_tensors.push(t_actual);
@@ -292,7 +326,11 @@ impl Algorithm for AlgorithmFFSAC {
             };
             log::info!(
                 "[Episode {} Tracking Env Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
-                episode, raw_rewards.iter().sum::<f64>(), inf_aps, ep_s, self.buffer.len()
+                episode,
+                raw_rewards.iter().sum::<f64>(),
+                inf_aps,
+                ep_s,
+                self.buffer.len()
             );
         }
 

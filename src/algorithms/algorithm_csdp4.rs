@@ -38,8 +38,15 @@ impl Algorithm4 {
             combined
         });
 
-        let model = RLModel2::new(input_size, context_size, hidden_sizes, &device, dt, input_bounds)
-            .ok_or("Failed to create RLModel2")?;
+        let model = RLModel2::new(
+            input_size,
+            context_size,
+            hidden_sizes,
+            &device,
+            dt,
+            input_bounds,
+        )
+        .ok_or("Failed to create RLModel2")?;
 
         Ok(Self {
             model,
@@ -99,7 +106,7 @@ impl Algorithm for Algorithm4 {
                 }
 
                 let mut all_action_inputs = Vec::with_capacity(n_envs * action_size * input_dim);
-                
+
                 // Construct inputs such that the batch dimension is the SECOND dimension for SNN
                 // In CSDP (Candle), tensors expect dimension (features, batch)
                 // We will collect column by column
@@ -112,7 +119,7 @@ impl Algorithm for Algorithm4 {
                         total_inference_actions += 1;
                     }
                 }
-                
+
                 // reshape carefully: we have collected contiguous vectors of size `input_dim`.
                 // meaning we have [action0_vec, action1_vec, action2_vec...]
                 // To get (input_dim, batch_size) we need to pass the memory and then TRASPOSE it!
@@ -182,7 +189,9 @@ impl Algorithm for Algorithm4 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -253,7 +262,9 @@ impl Algorithm for Algorithm4 {
 
             if self.buffer.len() >= 1000 {
                 let mut sorted_indices: Vec<usize> = (0..self.buffer.len()).collect();
-                sorted_indices.sort_unstable_by(|&a, &b| self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap());
+                sorted_indices.sort_unstable_by(|&a, &b| {
+                    self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap()
+                });
 
                 let batch_size = std::cmp::min(256, self.buffer.len() / 4);
                 let mut pos_tensors_flat = Vec::with_capacity(batch_size * input_dim);
@@ -267,7 +278,7 @@ impl Algorithm for Algorithm4 {
                     pos_tensors_flat.extend(best.0.iter().copied());
                     pos_tensors_flat.extend(vec![0.0; state_size]); // placeholder for x_{t+m} or ignore
                     pos_tensors_flat.push(best.1 as f32);
-                    
+
                     // Sigmoid reward
                     let sig_r = 1.0 / (1.0 + (-best.2).exp());
                     pos_rewards.push(sig_r);
@@ -282,14 +293,24 @@ impl Algorithm for Algorithm4 {
                     neg_tensors_flat.push(a_random as f32);
                 }
 
-                let pos_batch = Tensor::from_vec(pos_tensors_flat, (batch_size, input_dim), &self.device)?.transpose(0, 1)?.contiguous()?;
-                let neg_batch = Tensor::from_vec(neg_tensors_flat, (batch_size, input_dim), &self.device)?.transpose(0, 1)?.contiguous()?;
-                
-                let pos_rewards_tensor = Tensor::from_vec(pos_rewards, (1, batch_size), &self.device)?;
-                let neg_rewards_tensor = Tensor::ones((1, batch_size), candle_core::DType::F32, &self.device)?;
-                
-                let pos_label = Tensor::ones((1, batch_size), candle_core::DType::F32, &self.device)?;
-                let neg_label = Tensor::zeros((1, batch_size), candle_core::DType::F32, &self.device)?;
+                let pos_batch =
+                    Tensor::from_vec(pos_tensors_flat, (batch_size, input_dim), &self.device)?
+                        .transpose(0, 1)?
+                        .contiguous()?;
+                let neg_batch =
+                    Tensor::from_vec(neg_tensors_flat, (batch_size, input_dim), &self.device)?
+                        .transpose(0, 1)?
+                        .contiguous()?;
+
+                let pos_rewards_tensor =
+                    Tensor::from_vec(pos_rewards, (1, batch_size), &self.device)?;
+                let neg_rewards_tensor =
+                    Tensor::ones((1, batch_size), candle_core::DType::F32, &self.device)?;
+
+                let pos_label =
+                    Tensor::ones((1, batch_size), candle_core::DType::F32, &self.device)?;
+                let neg_label =
+                    Tensor::zeros((1, batch_size), candle_core::DType::F32, &self.device)?;
 
                 // Train Positive
                 for layer in self.model.layers.iter_mut() {

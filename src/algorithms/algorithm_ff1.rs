@@ -26,7 +26,8 @@ impl AlgorithmFF1 {
         let epochs_per_episode = 100;
         let mut dims = vec![input_size];
         dims.extend(hidden_sizes);
-        let model = FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
+        let model =
+            FFModel::new(&dims, &device, epochs_per_episode).expect("Failed to create FFModel");
 
         Ok(Self {
             model,
@@ -53,7 +54,7 @@ impl Algorithm for AlgorithmFF1 {
         let mut total_epochs: usize = 0;
         let action_size = env.action_size();
         let state_size = env.state_size();
-        
+
         let n_envs = 200;
         let mut envs: Vec<Box<dyn Environment>> = vec![env.clone_box()];
         for _ in 1..n_envs {
@@ -67,7 +68,7 @@ impl Algorithm for AlgorithmFF1 {
                 e.reset()?;
             }
             std::thread::sleep(Duration::from_millis(50)); // wait for environment to settle
-            
+
             let mut episode_data = Vec::new();
             let mut total_rewards = vec![0.0; n_envs];
 
@@ -120,7 +121,7 @@ impl Algorithm for AlgorithmFF1 {
                     let best_tensor = step_actions.last().unwrap().1.clone();
                     episode_data.push((best_tensor, worst_tensor));
                 }
-                
+
                 std::thread::sleep(Duration::from_millis(10));
 
                 if let Some(ref vis_state_arc) = vis_state {
@@ -130,7 +131,9 @@ impl Algorithm for AlgorithmFF1 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
                     }
@@ -207,7 +210,10 @@ impl Algorithm for AlgorithmFF1 {
             };
             log::info!(
                 "[Episode {} Tracking Env Reward: {}] Actions/sec: {:.1} | Epochs/sec: {:.2}",
-                episode, total_rewards[0], inf_aps, ep_s
+                episode,
+                total_rewards[0],
+                inf_aps,
+                ep_s
             );
         }
 

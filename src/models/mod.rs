@@ -7,12 +7,12 @@ use crate::synapse::{LayerId, SynapseConnection, SynapseMetadata, SynapseOps};
 use crate::visualization::{LayerVisInfo, SynapseVisInfo};
 use candle_core::{DType, Device, Result as CandleResult, Tensor};
 
+pub mod csdp_multi_model;
 pub mod ff_model;
 pub mod ff_multi_model;
 pub mod rl_model1;
 pub mod rl_model2;
 pub mod rl_model3;
-pub mod csdp_multi_model;
 mod robot_model;
 
 /// Configuration for creating a model

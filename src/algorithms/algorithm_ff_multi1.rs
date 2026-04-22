@@ -27,8 +27,8 @@ impl AlgorithmFFMulti1 {
         let epochs_per_episode = 100;
         let mut dims = vec![state_size];
         dims.extend(hidden_sizes);
-        let model =
-            FFMultiModel::new(&dims, action_size, &device, epochs_per_episode).expect("Failed to create FFMultiModel");
+        let model = FFMultiModel::new(&dims, action_size, &device, epochs_per_episode)
+            .expect("Failed to create FFMultiModel");
 
         Ok(Self {
             model,
@@ -86,7 +86,11 @@ impl Algorithm for AlgorithmFFMulti1 {
                 let mut current_states_tensors = Vec::new();
                 for state in current_states.iter() {
                     let state_f32: Vec<f32> = state.iter().map(|&x| x as f32).collect();
-                    current_states_tensors.push(Tensor::from_vec(state_f32, (1, state_size), &self.device)?);
+                    current_states_tensors.push(Tensor::from_vec(
+                        state_f32,
+                        (1, state_size),
+                        &self.device,
+                    )?);
                     total_inference_actions += 1; // 1 inference evaluates all actions now!
                 }
 
@@ -99,7 +103,11 @@ impl Algorithm for AlgorithmFFMulti1 {
                     let chunk_scores = &scores_vec[chunk_start..chunk_start + action_size];
 
                     if episode % 10 == 0 && _step == 0 && env_idx == 0 {
-                        log::info!("Ep {} Step 0 | Goodness Scores: {:.4?}", episode, chunk_scores);
+                        log::info!(
+                            "Ep {} Step 0 | Goodness Scores: {:.4?}",
+                            episode,
+                            chunk_scores
+                        );
                     }
 
                     let max_g = chunk_scores
@@ -145,10 +153,11 @@ impl Algorithm for AlgorithmFFMulti1 {
                             state.render_trail.clear();
                         }
                         if env_state.len() == 4 {
-                            state.render_trail.push((env_state[0]+env_state[2], env_state[1]+env_state[3]));
+                            state
+                                .render_trail
+                                .push((env_state[0] + env_state[2], env_state[1] + env_state[3]));
                         }
                         state.environment_state = Some(env_state);
-
                     }
                 }
 
@@ -215,7 +224,9 @@ impl Algorithm for AlgorithmFFMulti1 {
 
             if self.buffer.len() >= 1000 {
                 let mut sorted_indices: Vec<usize> = (0..self.buffer.len()).collect();
-                sorted_indices.sort_unstable_by(|&a, &b| self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap());
+                sorted_indices.sort_unstable_by(|&a, &b| {
+                    self.buffer[a].2.partial_cmp(&self.buffer[b].2).unwrap()
+                });
 
                 let batch_size = std::cmp::min(256, self.buffer.len() / 4);
                 let mut pos_tensors = Vec::new();
@@ -224,12 +235,16 @@ impl Algorithm for AlgorithmFFMulti1 {
                 for i in 0..batch_size {
                     let best = &self.buffer[sorted_indices[sorted_indices.len() - 1 - i]];
 
-                    pos_tensors.push(Tensor::from_vec(best.0.clone(), (1, state_size), &self.device)?);
+                    pos_tensors.push(Tensor::from_vec(
+                        best.0.clone(),
+                        (1, state_size),
+                        &self.device,
+                    )?);
                     labels.push(best.1);
                 }
 
                 let batch_x = Tensor::cat(&pos_tensors, 0)?;
-                
+
                 self.model.train(&batch_x, &labels)?;
                 _total_iteration += 1;
                 total_epochs += self.epochs_per_episode;

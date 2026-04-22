@@ -58,14 +58,14 @@ fn calc_goodness(z: &Tensor, thr: f32, maximize: bool) -> CandleResult<(Tensor, 
 /// C[z(t), y_type] (cross-entropy)
 fn calc_loss_ce(z: &Tensor, lab: &Tensor, thr: f32) -> CandleResult<Tensor> {
     let (_, logit) = calc_goodness(z, thr, true)?;
-    
+
     // cross_entropy = - lab * logit + (1 + exp(-|logit|)).ln() + max(logit, 0)
     let abs_logit_neg = logit.abs()?.affine(-1.0, 0.0)?;
     let term1 = abs_logit_neg.exp()?.affine(1.0, 1.0)?;
     // Candle may lack `.log()`, so we fall back to a zero tensor if it fails, but `.log()` exists.
     let term1 = term1.log()?;
     let term2 = logit.maximum(&logit.zeros_like()?)?;
-    
+
     let lab_logit = lab.mul(&logit)?;
     let cross_entropy = term1.add(&term2)?.sub(&lab_logit)?;
     Ok(cross_entropy)

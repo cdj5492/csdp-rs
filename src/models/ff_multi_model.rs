@@ -91,8 +91,12 @@ impl FFMultiLayer {
                     let pos_term = g.affine(-1.0, self.threshold)?;
                     let neg_term = g.affine(1.0, -self.threshold)?;
 
-                    let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?.log()?.broadcast_mul(&pos_mask)?;
-                    let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?.log()?.broadcast_mul(&neg_mask)?;
+                    let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                        .log()?
+                        .broadcast_mul(&pos_mask)?;
+                    let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                        .log()?
+                        .broadcast_mul(&neg_mask)?;
 
                     let scale = 1.0 / (self.num_classes as f32 - 1.0);
                     let neg_loss_scaled = (neg_loss * scale as f64)?;
@@ -111,7 +115,12 @@ impl FFMultiLayer {
 
             if epoch % 10 == 0 || epoch == self.num_epochs - 1 {
                 let avg_loss = epoch_loss_sum / n_batches as f32;
-                log::info!("Layer {} - Epoch {} Loss: {:.4}", layer_idx, epoch, avg_loss);
+                log::info!(
+                    "Layer {} - Epoch {} Loss: {:.4}",
+                    layer_idx,
+                    epoch,
+                    avg_loss
+                );
             }
         }
 
@@ -126,16 +135,32 @@ pub struct FFMultiModel {
 }
 
 impl FFMultiModel {
-    pub fn new(dims: &[usize], num_classes: usize, device: &Device, num_epochs: usize) -> CandleResult<Self> {
+    pub fn new(
+        dims: &[usize],
+        num_classes: usize,
+        device: &Device,
+        num_epochs: usize,
+    ) -> CandleResult<Self> {
         let mut layers = Vec::new();
         let mut varmaps = Vec::new();
         for i in 0..dims.len() - 1 {
             let mut varmap = VarMap::new();
-            let layer = FFMultiLayer::new(dims[i], dims[i + 1], num_classes, &mut varmap, device, num_epochs)?;
+            let layer = FFMultiLayer::new(
+                dims[i],
+                dims[i + 1],
+                num_classes,
+                &mut varmap,
+                device,
+                num_epochs,
+            )?;
             layers.push(layer);
             varmaps.push(varmap);
         }
-        Ok(Self { layers, varmaps, num_classes })
+        Ok(Self {
+            layers,
+            varmaps,
+            num_classes,
+        })
     }
 
     pub fn train(&mut self, x: &Tensor, y: &[usize]) -> CandleResult<()> {
@@ -170,7 +195,11 @@ impl FFMultiModel {
         let batch_size = batched_inputs.dim(0)?;
         let mut h = batched_inputs;
 
-        let mut total_goodnesses = Tensor::zeros((batch_size, self.num_classes), DType::F32, inputs[0].device())?;
+        let mut total_goodnesses = Tensor::zeros(
+            (batch_size, self.num_classes),
+            DType::F32,
+            inputs[0].device(),
+        )?;
 
         for layer in &self.layers {
             h = layer.forward(&h)?;
@@ -196,7 +225,11 @@ impl FFMultiModel {
         let batch_size = batched_inputs.dim(0)?;
         let mut h = batched_inputs;
 
-        let mut total_goodnesses = Tensor::zeros((batch_size, self.num_classes), DType::F32, inputs[0].device())?;
+        let mut total_goodnesses = Tensor::zeros(
+            (batch_size, self.num_classes),
+            DType::F32,
+            inputs[0].device(),
+        )?;
 
         for layer in &self.layers {
             h = layer.forward(&h)?;
@@ -234,7 +267,8 @@ impl FFMultiModel {
     /// Creates one file per layer: `layer_0.safetensors`, `layer_1.safetensors`, etc.
     pub fn save<P: AsRef<std::path::Path>>(&self, dir: P) -> CandleResult<()> {
         let dir = dir.as_ref();
-        std::fs::create_dir_all(dir).map_err(|e| candle_core::Error::Msg(format!("mkdir: {}", e)))?;
+        std::fs::create_dir_all(dir)
+            .map_err(|e| candle_core::Error::Msg(format!("mkdir: {}", e)))?;
         for (i, vm) in self.varmaps.iter().enumerate() {
             let path = dir.join(format!("layer_{}.safetensors", i));
             vm.save(&path)?;
@@ -252,7 +286,8 @@ impl FFMultiModel {
                 vm.load(&path)?;
             } else {
                 return Err(candle_core::Error::Msg(format!(
-                    "Missing weight file: {:?}", path
+                    "Missing weight file: {:?}",
+                    path
                 )));
             }
         }

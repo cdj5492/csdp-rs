@@ -39,7 +39,8 @@ mod root {
 
             #[allow(clippy::too_many_arguments)]
             pub fn create(builder: &mut ::planus::Builder) -> ::planus::Offset<Self> {
-                let table_writer: ::planus::table_writer::TableWriter<4> = ::core::default::Default::default();
+                let table_writer: ::planus::table_writer::TableWriter<4> =
+                    ::core::default::Default::default();
                 unsafe {
                     table_writer.finish(builder, |_table_writer| {});
                 }
@@ -60,7 +61,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Connection>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Connection>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -103,7 +107,10 @@ mod root {
             type Prepared = ::planus::Offset<Connection>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Connection>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Connection>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -143,7 +150,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -151,9 +160,17 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[ConnectionRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location(
+                        "[ConnectionRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
+                })
             }
         }
 
@@ -194,7 +211,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[ConnectionRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[ConnectionRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -221,7 +240,8 @@ mod root {
 
             #[allow(clippy::too_many_arguments)]
             pub fn create(builder: &mut ::planus::Builder) -> ::planus::Offset<Self> {
-                let table_writer: ::planus::table_writer::TableWriter<4> = ::core::default::Default::default();
+                let table_writer: ::planus::table_writer::TableWriter<4> =
+                    ::core::default::Default::default();
                 unsafe {
                     table_writer.finish(builder, |_table_writer| {});
                 }
@@ -242,7 +262,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Quit>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Quit>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -285,7 +308,10 @@ mod root {
             type Prepared = ::planus::Offset<Quit>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Quit>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Quit>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -325,7 +351,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -333,9 +361,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[QuitRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[QuitRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -376,7 +408,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[QuitRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[QuitRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -411,7 +445,8 @@ mod root {
             ) -> ::planus::Offset<Self> {
                 let prepared_speed = field_speed.prepare(builder, &0.0);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<6> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<6> =
+                    ::core::default::Default::default();
                 if prepared_speed.is_some() {
                     table_writer.write_entry::<f32>(0);
                 }
@@ -440,7 +475,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Speed>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Speed>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -489,7 +527,9 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<f32, f32>> ::planus::WriteAs<::planus::Offset<Speed>> for SpeedBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<f32, f32>> ::planus::WriteAs<::planus::Offset<Speed>>
+            for SpeedBuilder<(T0,)>
+        {
             type Prepared = ::planus::Offset<Speed>;
 
             #[inline]
@@ -498,16 +538,23 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<f32, f32>> ::planus::WriteAsOptional<::planus::Offset<Speed>> for SpeedBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<f32, f32>>
+            ::planus::WriteAsOptional<::planus::Offset<Speed>> for SpeedBuilder<(T0,)>
+        {
             type Prepared = ::planus::Offset<Speed>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Speed>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Speed>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<f32, f32>> ::planus::WriteAsOffset<Speed> for SpeedBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<f32, f32>> ::planus::WriteAsOffset<Speed>
+            for SpeedBuilder<(T0,)>
+        {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<Speed> {
                 let (v0,) = &self.0;
@@ -552,7 +599,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -560,9 +609,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[SpeedRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[SpeedRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -603,7 +656,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[SpeedRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[SpeedRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -638,7 +693,8 @@ mod root {
             ) -> ::planus::Offset<Self> {
                 let prepared_paused = field_paused.prepare(builder, &false);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<6> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<6> =
+                    ::core::default::Default::default();
                 if prepared_paused.is_some() {
                     table_writer.write_entry::<bool>(0);
                 }
@@ -667,7 +723,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Paused>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Paused>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -716,7 +775,9 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<bool, bool>> ::planus::WriteAs<::planus::Offset<Paused>> for PausedBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<bool, bool>> ::planus::WriteAs<::planus::Offset<Paused>>
+            for PausedBuilder<(T0,)>
+        {
             type Prepared = ::planus::Offset<Paused>;
 
             #[inline]
@@ -725,16 +786,23 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<bool, bool>> ::planus::WriteAsOptional<::planus::Offset<Paused>> for PausedBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<bool, bool>>
+            ::planus::WriteAsOptional<::planus::Offset<Paused>> for PausedBuilder<(T0,)>
+        {
             type Prepared = ::planus::Offset<Paused>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Paused>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Paused>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<bool, bool>> ::planus::WriteAsOffset<Paused> for PausedBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<bool, bool>> ::planus::WriteAsOffset<Paused>
+            for PausedBuilder<(T0,)>
+        {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<Paused> {
                 let (v0,) = &self.0;
@@ -779,7 +847,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -787,9 +857,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[PausedRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[PausedRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -830,7 +904,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[PausedRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[PausedRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -943,7 +1019,10 @@ mod root {
 
         impl ::planus::WriteAsOptionalUnion<Message> for Message {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Self>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Self>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1046,7 +1125,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::Connection>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1065,7 +1147,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::Quit>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1084,7 +1169,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::Speed>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1103,7 +1191,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::Paused>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1122,7 +1213,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::GameState>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1141,7 +1235,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::AddRender>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1160,7 +1257,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::RemoveRender>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Message>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Message>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -1183,31 +1283,39 @@ mod root {
             fn try_from(value: MessageRef<'a>) -> ::planus::Result<Self> {
                 ::core::result::Result::Ok(match value {
                     MessageRef::Connection(value) => {
-                        Self::Connection(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
+                        Self::Connection(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryFrom::try_from(value)?,
+                        ))
                     }
 
-                    MessageRef::Quit(value) => {
-                        Self::Quit(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
-                    }
+                    MessageRef::Quit(value) => Self::Quit(::planus::alloc::boxed::Box::new(
+                        ::core::convert::TryFrom::try_from(value)?,
+                    )),
 
-                    MessageRef::Speed(value) => {
-                        Self::Speed(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
-                    }
+                    MessageRef::Speed(value) => Self::Speed(::planus::alloc::boxed::Box::new(
+                        ::core::convert::TryFrom::try_from(value)?,
+                    )),
 
-                    MessageRef::Paused(value) => {
-                        Self::Paused(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
-                    }
+                    MessageRef::Paused(value) => Self::Paused(::planus::alloc::boxed::Box::new(
+                        ::core::convert::TryFrom::try_from(value)?,
+                    )),
 
                     MessageRef::GameState(value) => {
-                        Self::GameState(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
+                        Self::GameState(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryFrom::try_from(value)?,
+                        ))
                     }
 
                     MessageRef::AddRender(value) => {
-                        Self::AddRender(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
+                        Self::AddRender(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryFrom::try_from(value)?,
+                        ))
                     }
 
                     MessageRef::RemoveRender(value) => {
-                        Self::RemoveRender(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
+                        Self::RemoveRender(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryFrom::try_from(value)?,
+                        ))
                     }
                 })
             }
@@ -1220,23 +1328,34 @@ mod root {
                 field_offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
                 match tag {
-                    1 => {
-                        ::core::result::Result::Ok(Self::Connection(::planus::TableRead::from_buffer(buffer, field_offset)?))
-                    }
-                    2 => ::core::result::Result::Ok(Self::Quit(::planus::TableRead::from_buffer(buffer, field_offset)?)),
-                    3 => ::core::result::Result::Ok(Self::Speed(::planus::TableRead::from_buffer(buffer, field_offset)?)),
-                    4 => ::core::result::Result::Ok(Self::Paused(::planus::TableRead::from_buffer(buffer, field_offset)?)),
-                    5 => {
-                        ::core::result::Result::Ok(Self::GameState(::planus::TableRead::from_buffer(buffer, field_offset)?))
-                    }
-                    6 => {
-                        ::core::result::Result::Ok(Self::AddRender(::planus::TableRead::from_buffer(buffer, field_offset)?))
-                    }
-                    7 => ::core::result::Result::Ok(Self::RemoveRender(::planus::TableRead::from_buffer(
+                    1 => ::core::result::Result::Ok(Self::Connection(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    2 => ::core::result::Result::Ok(Self::Quit(::planus::TableRead::from_buffer(
                         buffer,
                         field_offset,
                     )?)),
-                    _ => ::core::result::Result::Err(::planus::errors::ErrorKind::UnknownUnionTag { tag }),
+                    3 => ::core::result::Result::Ok(Self::Speed(::planus::TableRead::from_buffer(
+                        buffer,
+                        field_offset,
+                    )?)),
+                    4 => ::core::result::Result::Ok(Self::Paused(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    5 => ::core::result::Result::Ok(Self::GameState(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    6 => ::core::result::Result::Ok(Self::AddRender(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    7 => ::core::result::Result::Ok(Self::RemoveRender(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    _ => {
+                        ::core::result::Result::Err(::planus::errors::ErrorKind::UnknownUnionTag {
+                            tag,
+                        })
+                    }
                 }
             }
         }
@@ -1269,7 +1388,8 @@ mod root {
             ) -> ::planus::Offset<Self> {
                 let prepared_message = field_message.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<8> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<8> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<::planus::Offset<self::Message>>(1);
                 table_writer.write_entry::<u8>(0);
 
@@ -1296,7 +1416,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Packet>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Packet>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -1338,7 +1461,9 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsUnion<self::Message>> ::planus::WriteAs<::planus::Offset<Packet>> for PacketBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsUnion<self::Message>> ::planus::WriteAs<::planus::Offset<Packet>>
+            for PacketBuilder<(T0,)>
+        {
             type Prepared = ::planus::Offset<Packet>;
 
             #[inline]
@@ -1347,18 +1472,23 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsUnion<self::Message>> ::planus::WriteAsOptional<::planus::Offset<Packet>>
-            for PacketBuilder<(T0,)>
+        impl<T0: ::planus::WriteAsUnion<self::Message>>
+            ::planus::WriteAsOptional<::planus::Offset<Packet>> for PacketBuilder<(T0,)>
         {
             type Prepared = ::planus::Offset<Packet>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Packet>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Packet>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAsUnion<self::Message>> ::planus::WriteAsOffset<Packet> for PacketBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsUnion<self::Message>> ::planus::WriteAsOffset<Packet>
+            for PacketBuilder<(T0,)>
+        {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<Packet> {
                 let (v0,) = &self.0;
@@ -1403,7 +1533,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -1411,9 +1543,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[PacketRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[PacketRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -1454,7 +1590,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[PacketRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[PacketRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -1500,7 +1638,9 @@ mod root {
         impl ::core::convert::TryFrom<u8> for GameMode {
             type Error = ::planus::errors::UnknownEnumTagKind;
             #[inline]
-            fn try_from(value: u8) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTagKind> {
+            fn try_from(
+                value: u8,
+            ) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTagKind> {
                 #[allow(clippy::match_single_binding)]
                 match value {
                     0 => ::core::result::Result::Ok(GameMode::Soccar),
@@ -1510,7 +1650,9 @@ mod root {
                     4 => ::core::result::Result::Ok(GameMode::Dropshot),
                     5 => ::core::result::Result::Ok(GameMode::TheVoid),
 
-                    _ => ::core::result::Result::Err(::planus::errors::UnknownEnumTagKind { tag: value as i128 }),
+                    _ => ::core::result::Result::Err(::planus::errors::UnknownEnumTagKind {
+                        tag: value as i128,
+                    }),
                 }
             }
         }
@@ -1549,7 +1691,11 @@ mod root {
             type Prepared = Self;
 
             #[inline]
-            fn prepare(&self, _builder: &mut ::planus::Builder, default: &GameMode) -> ::core::option::Option<GameMode> {
+            fn prepare(
+                &self,
+                _builder: &mut ::planus::Builder,
+                default: &GameMode,
+            ) -> ::core::option::Option<GameMode> {
                 if self == default {
                     ::core::option::Option::None
                 } else {
@@ -1562,7 +1708,10 @@ mod root {
             type Prepared = Self;
 
             #[inline]
-            fn prepare(&self, _builder: &mut ::planus::Builder) -> ::core::option::Option<GameMode> {
+            fn prepare(
+                &self,
+                _builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<GameMode> {
                 ::core::option::Option::Some(*self)
             }
         }
@@ -1587,9 +1736,14 @@ mod root {
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTag> {
                 let value = unsafe { *buffer.buffer.get_unchecked(offset) };
-                let value: ::core::result::Result<Self, _> = ::core::convert::TryInto::try_into(value);
+                let value: ::core::result::Result<Self, _> =
+                    ::core::convert::TryInto::try_into(value);
                 value.map_err(|error_kind| {
-                    error_kind.with_error_location("GameMode", "VectorRead::from_buffer", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "GameMode",
+                        "VectorRead::from_buffer",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -1608,7 +1762,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Self], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Self],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 1];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -1642,13 +1800,17 @@ mod root {
         impl ::core::convert::TryFrom<u8> for Team {
             type Error = ::planus::errors::UnknownEnumTagKind;
             #[inline]
-            fn try_from(value: u8) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTagKind> {
+            fn try_from(
+                value: u8,
+            ) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTagKind> {
                 #[allow(clippy::match_single_binding)]
                 match value {
                     0 => ::core::result::Result::Ok(Team::Blue),
                     1 => ::core::result::Result::Ok(Team::Orange),
 
-                    _ => ::core::result::Result::Err(::planus::errors::UnknownEnumTagKind { tag: value as i128 }),
+                    _ => ::core::result::Result::Err(::planus::errors::UnknownEnumTagKind {
+                        tag: value as i128,
+                    }),
                 }
             }
         }
@@ -1687,7 +1849,11 @@ mod root {
             type Prepared = Self;
 
             #[inline]
-            fn prepare(&self, _builder: &mut ::planus::Builder, default: &Team) -> ::core::option::Option<Team> {
+            fn prepare(
+                &self,
+                _builder: &mut ::planus::Builder,
+                default: &Team,
+            ) -> ::core::option::Option<Team> {
                 if self == default {
                     ::core::option::Option::None
                 } else {
@@ -1725,9 +1891,14 @@ mod root {
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTag> {
                 let value = unsafe { *buffer.buffer.get_unchecked(offset) };
-                let value: ::core::result::Result<Self, _> = ::core::convert::TryInto::try_into(value);
+                let value: ::core::result::Result<Self, _> =
+                    ::core::convert::TryInto::try_into(value);
                 value.map_err(|error_kind| {
-                    error_kind.with_error_location("Team", "VectorRead::from_buffer", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "Team",
+                        "VectorRead::from_buffer",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -1746,7 +1917,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Self], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Self],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 1];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -1783,14 +1958,18 @@ mod root {
         impl ::core::convert::TryFrom<u8> for TileState {
             type Error = ::planus::errors::UnknownEnumTagKind;
             #[inline]
-            fn try_from(value: u8) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTagKind> {
+            fn try_from(
+                value: u8,
+            ) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTagKind> {
                 #[allow(clippy::match_single_binding)]
                 match value {
                     0 => ::core::result::Result::Ok(TileState::Full),
                     1 => ::core::result::Result::Ok(TileState::Damaged),
                     2 => ::core::result::Result::Ok(TileState::Broken),
 
-                    _ => ::core::result::Result::Err(::planus::errors::UnknownEnumTagKind { tag: value as i128 }),
+                    _ => ::core::result::Result::Err(::planus::errors::UnknownEnumTagKind {
+                        tag: value as i128,
+                    }),
                 }
             }
         }
@@ -1829,7 +2008,11 @@ mod root {
             type Prepared = Self;
 
             #[inline]
-            fn prepare(&self, _builder: &mut ::planus::Builder, default: &TileState) -> ::core::option::Option<TileState> {
+            fn prepare(
+                &self,
+                _builder: &mut ::planus::Builder,
+                default: &TileState,
+            ) -> ::core::option::Option<TileState> {
                 if self == default {
                     ::core::option::Option::None
                 } else {
@@ -1842,7 +2025,10 @@ mod root {
             type Prepared = Self;
 
             #[inline]
-            fn prepare(&self, _builder: &mut ::planus::Builder) -> ::core::option::Option<TileState> {
+            fn prepare(
+                &self,
+                _builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<TileState> {
                 ::core::option::Option::Some(*self)
             }
         }
@@ -1867,9 +2053,14 @@ mod root {
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::UnknownEnumTag> {
                 let value = unsafe { *buffer.buffer.get_unchecked(offset) };
-                let value: ::core::result::Result<Self, _> = ::core::convert::TryInto::try_into(value);
+                let value: ::core::result::Result<Self, _> =
+                    ::core::convert::TryInto::try_into(value);
                 value.map_err(|error_kind| {
-                    error_kind.with_error_location("TileState", "VectorRead::from_buffer", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "TileState",
+                        "VectorRead::from_buffer",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -1888,7 +2079,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Self], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Self],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 1];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -1946,7 +2141,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 36])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 36]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -2027,12 +2224,17 @@ mod root {
 
         impl<'a, 'b> ::core::cmp::PartialEq<Mat3Ref<'a>> for Mat3Ref<'b> {
             fn eq(&self, other: &Mat3Ref<'_>) -> bool {
-                self.forward() == other.forward() && self.right() == other.right() && self.up() == other.up()
+                self.forward() == other.forward()
+                    && self.right() == other.right()
+                    && self.up() == other.up()
             }
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<Mat3Ref<'a>> for Mat3Ref<'b> {
-            fn partial_cmp(&self, other: &Mat3Ref<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &Mat3Ref<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.forward().partial_cmp(&other.forward()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -2062,7 +2264,10 @@ mod root {
             const STRIDE: usize = 36;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -2081,7 +2286,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Mat3], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Mat3],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 36];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -2144,7 +2353,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 72])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 72]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -2242,7 +2453,10 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<PhysStateRef<'a>> for PhysStateRef<'b> {
-            fn partial_cmp(&self, other: &PhysStateRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &PhysStateRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.pos().partial_cmp(&other.pos()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -2277,7 +2491,10 @@ mod root {
             const STRIDE: usize = 72;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -2296,7 +2513,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[PhysState], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[PhysState],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 72];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -2380,7 +2601,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 24])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 24]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -2518,7 +2741,10 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<CarControlsRef<'a>> for CarControlsRef<'b> {
-            fn partial_cmp(&self, other: &CarControlsRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &CarControlsRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.throttle().partial_cmp(&other.throttle()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -2573,7 +2799,10 @@ mod root {
             const STRIDE: usize = 24;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -2592,7 +2821,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[CarControls], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[CarControls],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 24];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -2643,14 +2876,19 @@ mod root {
 
         impl ::planus::WriteAsOffset<WheelPairConfig> for WheelPairConfig {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<WheelPairConfig> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<WheelPairConfig> {
                 unsafe {
                     builder.write_with(20, 3, |buffer_position, bytes| {
                         let bytes = bytes.as_mut_ptr();
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 20])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 20]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -2724,7 +2962,9 @@ mod root {
                 Self {
                     wheel_radius: value.wheel_radius(),
                     suspension_rest_length: value.suspension_rest_length(),
-                    connection_point_offset: ::core::convert::From::from(value.connection_point_offset()),
+                    connection_point_offset: ::core::convert::From::from(
+                        value.connection_point_offset(),
+                    ),
                 }
             }
         }
@@ -2738,18 +2978,25 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<WheelPairConfigRef<'a>> for WheelPairConfigRef<'b> {
-            fn partial_cmp(&self, other: &WheelPairConfigRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &WheelPairConfigRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.wheel_radius().partial_cmp(&other.wheel_radius()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
 
-                match self.suspension_rest_length().partial_cmp(&other.suspension_rest_length()) {
+                match self
+                    .suspension_rest_length()
+                    .partial_cmp(&other.suspension_rest_length())
+                {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
 
-                self.connection_point_offset().partial_cmp(&other.connection_point_offset())
+                self.connection_point_offset()
+                    .partial_cmp(&other.connection_point_offset())
             }
         }
 
@@ -2768,7 +3015,10 @@ mod root {
             const STRIDE: usize = 20;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -2865,7 +3115,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 72])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 72]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -2983,13 +3235,19 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<CarConfigRef<'a>> for CarConfigRef<'b> {
-            fn partial_cmp(&self, other: &CarConfigRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &CarConfigRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.hitbox_size().partial_cmp(&other.hitbox_size()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
 
-                match self.hitbox_pos_offset().partial_cmp(&other.hitbox_pos_offset()) {
+                match self
+                    .hitbox_pos_offset()
+                    .partial_cmp(&other.hitbox_pos_offset())
+                {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
@@ -3028,7 +3286,10 @@ mod root {
             const STRIDE: usize = 72;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -3047,7 +3308,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[CarConfig], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[CarConfig],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 72];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -3097,7 +3362,8 @@ mod root {
                 let prepared_other_car_id = field_other_car_id.prepare(builder, &0);
                 let prepared_cooldown_timer = field_cooldown_timer.prepare(builder, &0.0);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<8> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<8> =
+                    ::core::default::Default::default();
                 if prepared_other_car_id.is_some() {
                     table_writer.write_entry::<u64>(0);
                 }
@@ -3107,10 +3373,14 @@ mod root {
 
                 unsafe {
                     table_writer.finish(builder, |object_writer| {
-                        if let ::core::option::Option::Some(prepared_other_car_id) = prepared_other_car_id {
+                        if let ::core::option::Option::Some(prepared_other_car_id) =
+                            prepared_other_car_id
+                        {
                             object_writer.write::<_, _, 8>(&prepared_other_car_id);
                         }
-                        if let ::core::option::Option::Some(prepared_cooldown_timer) = prepared_cooldown_timer {
+                        if let ::core::option::Option::Some(prepared_cooldown_timer) =
+                            prepared_cooldown_timer
+                        {
                             object_writer.write::<_, _, 4>(&prepared_cooldown_timer);
                         }
                     });
@@ -3132,7 +3402,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<CarContact>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<CarContact>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -3185,7 +3458,9 @@ mod root {
             /// Sets the [`cooldown_timer` field](CarContact#structfield.cooldown_timer) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn cooldown_timer_as_default(self) -> CarContactBuilder<(T0, ::planus::DefaultValue)> {
+            pub fn cooldown_timer_as_default(
+                self,
+            ) -> CarContactBuilder<(T0, ::planus::DefaultValue)> {
                 self.cooldown_timer(::planus::DefaultValue)
             }
         }
@@ -3213,12 +3488,16 @@ mod root {
         }
 
         impl<T0: ::planus::WriteAsDefault<u64, u64>, T1: ::planus::WriteAsDefault<f32, f32>>
-            ::planus::WriteAsOptional<::planus::Offset<CarContact>> for CarContactBuilder<(T0, T1)>
+            ::planus::WriteAsOptional<::planus::Offset<CarContact>>
+            for CarContactBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<CarContact>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<CarContact>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<CarContact>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -3241,13 +3520,19 @@ mod root {
             /// Getter for the [`other_car_id` field](CarContact#structfield.other_car_id).
             #[inline]
             pub fn other_car_id(&self) -> ::planus::Result<u64> {
-                ::core::result::Result::Ok(self.0.access(0, "CarContact", "other_car_id")?.unwrap_or(0))
+                ::core::result::Result::Ok(
+                    self.0.access(0, "CarContact", "other_car_id")?.unwrap_or(0),
+                )
             }
 
             /// Getter for the [`cooldown_timer` field](CarContact#structfield.cooldown_timer).
             #[inline]
             pub fn cooldown_timer(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(1, "CarContact", "cooldown_timer")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(1, "CarContact", "cooldown_timer")?
+                        .unwrap_or(0.0),
+                )
             }
         }
 
@@ -3278,7 +3563,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -3286,9 +3573,17 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[CarContactRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location(
+                        "[CarContactRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
+                })
             }
         }
 
@@ -3329,7 +3624,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[CarContactRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[CarContactRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -3387,7 +3684,8 @@ mod root {
                 let prepared_tick_count_when_extra_impulse_applied =
                     field_tick_count_when_extra_impulse_applied.prepare(builder, &0);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<14> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<14> =
+                    ::core::default::Default::default();
                 if prepared_tick_count_when_hit.is_some() {
                     table_writer.write_entry::<u64>(3);
                 }
@@ -3400,13 +3698,17 @@ mod root {
 
                 unsafe {
                     table_writer.finish(builder, |object_writer| {
-                        if let ::core::option::Option::Some(prepared_tick_count_when_hit) = prepared_tick_count_when_hit {
+                        if let ::core::option::Option::Some(prepared_tick_count_when_hit) =
+                            prepared_tick_count_when_hit
+                        {
                             object_writer.write::<_, _, 8>(&prepared_tick_count_when_hit);
                         }
-                        if let ::core::option::Option::Some(prepared_tick_count_when_extra_impulse_applied) =
-                            prepared_tick_count_when_extra_impulse_applied
+                        if let ::core::option::Option::Some(
+                            prepared_tick_count_when_extra_impulse_applied,
+                        ) = prepared_tick_count_when_extra_impulse_applied
                         {
-                            object_writer.write::<_, _, 8>(&prepared_tick_count_when_extra_impulse_applied);
+                            object_writer
+                                .write::<_, _, 8>(&prepared_tick_count_when_extra_impulse_applied);
                         }
                         object_writer.write::<_, _, 12>(&prepared_relative_pos_on_ball);
                         object_writer.write::<_, _, 12>(&prepared_ball_pos);
@@ -3430,7 +3732,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<BallHitInfo>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<BallHitInfo>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -3509,7 +3814,9 @@ mod root {
             /// Sets the [`tick_count_when_hit` field](BallHitInfo#structfield.tick_count_when_hit) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn tick_count_when_hit_as_default(self) -> BallHitInfoBuilder<(T0, T1, T2, ::planus::DefaultValue)> {
+            pub fn tick_count_when_hit_as_default(
+                self,
+            ) -> BallHitInfoBuilder<(T0, T1, T2, ::planus::DefaultValue)> {
                 self.tick_count_when_hit(::planus::DefaultValue)
             }
         }
@@ -3518,7 +3825,10 @@ mod root {
             /// Setter for the [`tick_count_when_extra_impulse_applied` field](BallHitInfo#structfield.tick_count_when_extra_impulse_applied).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn tick_count_when_extra_impulse_applied<T4>(self, value: T4) -> BallHitInfoBuilder<(T0, T1, T2, T3, T4)>
+            pub fn tick_count_when_extra_impulse_applied<T4>(
+                self,
+                value: T4,
+            ) -> BallHitInfoBuilder<(T0, T1, T2, T3, T4)>
             where
                 T4: ::planus::WriteAsDefault<u64, u64>,
             {
@@ -3553,7 +3863,8 @@ mod root {
             T2: ::planus::WriteAs<self::Vec3>,
             T3: ::planus::WriteAsDefault<u64, u64>,
             T4: ::planus::WriteAsDefault<u64, u64>,
-        > ::planus::WriteAs<::planus::Offset<BallHitInfo>> for BallHitInfoBuilder<(T0, T1, T2, T3, T4)>
+        > ::planus::WriteAs<::planus::Offset<BallHitInfo>>
+            for BallHitInfoBuilder<(T0, T1, T2, T3, T4)>
         {
             type Prepared = ::planus::Offset<BallHitInfo>;
 
@@ -3569,12 +3880,16 @@ mod root {
             T2: ::planus::WriteAs<self::Vec3>,
             T3: ::planus::WriteAsDefault<u64, u64>,
             T4: ::planus::WriteAsDefault<u64, u64>,
-        > ::planus::WriteAsOptional<::planus::Offset<BallHitInfo>> for BallHitInfoBuilder<(T0, T1, T2, T3, T4)>
+        > ::planus::WriteAsOptional<::planus::Offset<BallHitInfo>>
+            for BallHitInfoBuilder<(T0, T1, T2, T3, T4)>
         {
             type Prepared = ::planus::Offset<BallHitInfo>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<BallHitInfo>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<BallHitInfo>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -3602,7 +3917,8 @@ mod root {
             /// Getter for the [`relative_pos_on_ball` field](BallHitInfo#structfield.relative_pos_on_ball).
             #[inline]
             pub fn relative_pos_on_ball(&self) -> ::planus::Result<self::Vec3Ref<'a>> {
-                self.0.access_required(0, "BallHitInfo", "relative_pos_on_ball")
+                self.0
+                    .access_required(0, "BallHitInfo", "relative_pos_on_ball")
             }
 
             /// Getter for the [`ball_pos` field](BallHitInfo#structfield.ball_pos).
@@ -3620,7 +3936,11 @@ mod root {
             /// Getter for the [`tick_count_when_hit` field](BallHitInfo#structfield.tick_count_when_hit).
             #[inline]
             pub fn tick_count_when_hit(&self) -> ::planus::Result<u64> {
-                ::core::result::Result::Ok(self.0.access(3, "BallHitInfo", "tick_count_when_hit")?.unwrap_or(0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(3, "BallHitInfo", "tick_count_when_hit")?
+                        .unwrap_or(0),
+                )
             }
 
             /// Getter for the [`tick_count_when_extra_impulse_applied` field](BallHitInfo#structfield.tick_count_when_extra_impulse_applied).
@@ -3655,10 +3975,14 @@ mod root {
             #[allow(unreachable_code)]
             fn try_from(value: BallHitInfoRef<'a>) -> ::planus::Result<Self> {
                 ::core::result::Result::Ok(Self {
-                    relative_pos_on_ball: ::core::convert::Into::into(value.relative_pos_on_ball()?),
+                    relative_pos_on_ball: ::core::convert::Into::into(
+                        value.relative_pos_on_ball()?,
+                    ),
                     ball_pos: ::core::convert::Into::into(value.ball_pos()?),
                     extra_hit_vel: ::core::convert::Into::into(value.extra_hit_vel()?),
-                    tick_count_when_hit: ::core::convert::TryInto::try_into(value.tick_count_when_hit()?)?,
+                    tick_count_when_hit: ::core::convert::TryInto::try_into(
+                        value.tick_count_when_hit()?,
+                    )?,
                     tick_count_when_extra_impulse_applied: ::core::convert::TryInto::try_into(
                         value.tick_count_when_extra_impulse_applied()?,
                     )?,
@@ -3672,7 +3996,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -3680,9 +4006,16 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
                 ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
-                    error_kind.with_error_location("[BallHitInfoRef]", "get", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "[BallHitInfoRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -3724,7 +4057,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[BallHitInfoRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[BallHitInfoRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -3774,7 +4109,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 12])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 12]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -3862,13 +4199,19 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<HeatseekerInfoRef<'a>> for HeatseekerInfoRef<'b> {
-            fn partial_cmp(&self, other: &HeatseekerInfoRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &HeatseekerInfoRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.y_target_dir().partial_cmp(&other.y_target_dir()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
 
-                match self.cur_target_speed().partial_cmp(&other.cur_target_speed()) {
+                match self
+                    .cur_target_speed()
+                    .partial_cmp(&other.cur_target_speed())
+                {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
@@ -3892,7 +4235,10 @@ mod root {
             const STRIDE: usize = 12;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -3984,7 +4330,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 24])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 24]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -4092,13 +4440,19 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<DropshotInfoRef<'a>> for DropshotInfoRef<'b> {
-            fn partial_cmp(&self, other: &DropshotInfoRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &DropshotInfoRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.charge_level().partial_cmp(&other.charge_level()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
 
-                match self.accumulated_hit_force().partial_cmp(&other.accumulated_hit_force()) {
+                match self
+                    .accumulated_hit_force()
+                    .partial_cmp(&other.accumulated_hit_force())
+                {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
                 }
@@ -4113,7 +4467,8 @@ mod root {
                     o => return o,
                 }
 
-                self.last_damage_tick().partial_cmp(&other.last_damage_tick())
+                self.last_damage_tick()
+                    .partial_cmp(&other.last_damage_tick())
             }
         }
 
@@ -4132,7 +4487,10 @@ mod root {
             const STRIDE: usize = 24;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -4151,7 +4509,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[DropshotInfo], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[DropshotInfo],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 24];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -4210,7 +4572,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 112])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 112]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -4291,12 +4655,17 @@ mod root {
 
         impl<'a, 'b> ::core::cmp::PartialEq<BallStateRef<'a>> for BallStateRef<'b> {
             fn eq(&self, other: &BallStateRef<'_>) -> bool {
-                self.physics() == other.physics() && self.hs_info() == other.hs_info() && self.ds_info() == other.ds_info()
+                self.physics() == other.physics()
+                    && self.hs_info() == other.hs_info()
+                    && self.ds_info() == other.ds_info()
             }
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<BallStateRef<'a>> for BallStateRef<'b> {
-            fn partial_cmp(&self, other: &BallStateRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &BallStateRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.physics().partial_cmp(&other.physics()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -4326,7 +4695,10 @@ mod root {
             const STRIDE: usize = 112;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -4345,7 +4717,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[BallState], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[BallState],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 112];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -4399,7 +4775,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 16])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 16]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -4476,7 +4854,10 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<BoostPadConfigRef<'a>> for BoostPadConfigRef<'b> {
-            fn partial_cmp(&self, other: &BoostPadConfigRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &BoostPadConfigRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.pos().partial_cmp(&other.pos()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -4501,7 +4882,10 @@ mod root {
             const STRIDE: usize = 16;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -4588,7 +4972,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 24])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 24]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -4686,7 +5072,10 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<BoostPadStateRef<'a>> for BoostPadStateRef<'b> {
-            fn partial_cmp(&self, other: &BoostPadStateRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &BoostPadStateRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.is_active().partial_cmp(&other.is_active()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -4702,7 +5091,8 @@ mod root {
                     o => return o,
                 }
 
-                self.prev_locked_car_id().partial_cmp(&other.prev_locked_car_id())
+                self.prev_locked_car_id()
+                    .partial_cmp(&other.prev_locked_car_id())
             }
         }
 
@@ -4721,7 +5111,10 @@ mod root {
             const STRIDE: usize = 24;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -4794,7 +5187,8 @@ mod root {
                 let prepared_config = field_config.prepare(builder);
                 let prepared_state = field_state.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<8> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<8> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<self::BoostPadState>(1);
                 table_writer.write_entry::<self::BoostPadConfig>(0);
 
@@ -4821,7 +5215,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<BoostPadInfo>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<BoostPadInfo>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -4876,8 +5273,10 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::BoostPadConfig>, T1: ::planus::WriteAs<self::BoostPadState>>
-            ::planus::WriteAs<::planus::Offset<BoostPadInfo>> for BoostPadInfoBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<self::BoostPadConfig>,
+            T1: ::planus::WriteAs<self::BoostPadState>,
+        > ::planus::WriteAs<::planus::Offset<BoostPadInfo>> for BoostPadInfoBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<BoostPadInfo>;
 
@@ -4887,19 +5286,27 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::BoostPadConfig>, T1: ::planus::WriteAs<self::BoostPadState>>
-            ::planus::WriteAsOptional<::planus::Offset<BoostPadInfo>> for BoostPadInfoBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<self::BoostPadConfig>,
+            T1: ::planus::WriteAs<self::BoostPadState>,
+        > ::planus::WriteAsOptional<::planus::Offset<BoostPadInfo>>
+            for BoostPadInfoBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<BoostPadInfo>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<BoostPadInfo>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<BoostPadInfo>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::BoostPadConfig>, T1: ::planus::WriteAs<self::BoostPadState>>
-            ::planus::WriteAsOffset<BoostPadInfo> for BoostPadInfoBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<self::BoostPadConfig>,
+            T1: ::planus::WriteAs<self::BoostPadState>,
+        > ::planus::WriteAsOffset<BoostPadInfo> for BoostPadInfoBuilder<(T0, T1)>
         {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<BoostPadInfo> {
@@ -4953,7 +5360,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -4961,9 +5370,16 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
                 ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
-                    error_kind.with_error_location("[BoostPadInfoRef]", "get", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "[BoostPadInfoRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -5005,7 +5421,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[BoostPadInfoRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[BoostPadInfoRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -5047,7 +5465,8 @@ mod root {
                 let prepared_pos = field_pos.prepare(builder);
                 let prepared_state = field_state.prepare(builder, &self::TileState::Full);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<8> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<8> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<self::Vec3>(0);
                 if prepared_state.is_some() {
                     table_writer.write_entry::<self::TileState>(1);
@@ -5078,7 +5497,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<DropshotTile>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<DropshotTile>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -5140,8 +5562,10 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec3>, T1: ::planus::WriteAsDefault<self::TileState, self::TileState>>
-            ::planus::WriteAs<::planus::Offset<DropshotTile>> for DropshotTileBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec3>,
+            T1: ::planus::WriteAsDefault<self::TileState, self::TileState>,
+        > ::planus::WriteAs<::planus::Offset<DropshotTile>> for DropshotTileBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<DropshotTile>;
 
@@ -5151,19 +5575,27 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec3>, T1: ::planus::WriteAsDefault<self::TileState, self::TileState>>
-            ::planus::WriteAsOptional<::planus::Offset<DropshotTile>> for DropshotTileBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec3>,
+            T1: ::planus::WriteAsDefault<self::TileState, self::TileState>,
+        > ::planus::WriteAsOptional<::planus::Offset<DropshotTile>>
+            for DropshotTileBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<DropshotTile>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<DropshotTile>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<DropshotTile>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec3>, T1: ::planus::WriteAsDefault<self::TileState, self::TileState>>
-            ::planus::WriteAsOffset<DropshotTile> for DropshotTileBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec3>,
+            T1: ::planus::WriteAsDefault<self::TileState, self::TileState>,
+        > ::planus::WriteAsOffset<DropshotTile> for DropshotTileBuilder<(T0, T1)>
         {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<DropshotTile> {
@@ -5186,7 +5618,11 @@ mod root {
             /// Getter for the [`state` field](DropshotTile#structfield.state).
             #[inline]
             pub fn state(&self) -> ::planus::Result<self::TileState> {
-                ::core::result::Result::Ok(self.0.access(1, "DropshotTile", "state")?.unwrap_or(self::TileState::Full))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(1, "DropshotTile", "state")?
+                        .unwrap_or(self::TileState::Full),
+                )
             }
         }
 
@@ -5217,7 +5653,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -5225,9 +5663,16 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
                 ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
-                    error_kind.with_error_location("[DropshotTileRef]", "get", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "[DropshotTileRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -5269,7 +5714,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[DropshotTileRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[DropshotTileRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -5305,15 +5752,22 @@ mod root {
             #[allow(clippy::too_many_arguments)]
             pub fn create(
                 builder: &mut ::planus::Builder,
-                field_blue_tiles: impl ::planus::WriteAs<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>,
-                field_orange_tiles: impl ::planus::WriteAs<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>,
+                field_blue_tiles: impl ::planus::WriteAs<
+                    ::planus::Offset<[::planus::Offset<self::DropshotTile>]>,
+                >,
+                field_orange_tiles: impl ::planus::WriteAs<
+                    ::planus::Offset<[::planus::Offset<self::DropshotTile>]>,
+                >,
             ) -> ::planus::Offset<Self> {
                 let prepared_blue_tiles = field_blue_tiles.prepare(builder);
                 let prepared_orange_tiles = field_orange_tiles.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<8> = ::core::default::Default::default();
-                table_writer.write_entry::<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>(0);
-                table_writer.write_entry::<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>(1);
+                let mut table_writer: ::planus::table_writer::TableWriter<8> =
+                    ::core::default::Default::default();
+                table_writer
+                    .write_entry::<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>(0);
+                table_writer
+                    .write_entry::<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>(1);
 
                 unsafe {
                     table_writer.finish(builder, |object_writer| {
@@ -5329,7 +5783,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<DropshotTilesByTeam> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<DropshotTilesByTeam> {
                 ::planus::WriteAsOffset::prepare(self, builder)
             }
         }
@@ -5348,7 +5805,10 @@ mod root {
 
         impl ::planus::WriteAsOffset<DropshotTilesByTeam> for DropshotTilesByTeam {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<DropshotTilesByTeam> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<DropshotTilesByTeam> {
                 DropshotTilesByTeam::create(builder, &self.blue_tiles, &self.orange_tiles)
             }
         }
@@ -5388,7 +5848,10 @@ mod root {
         impl<T0, T1> DropshotTilesByTeamBuilder<(T0, T1)> {
             /// Finish writing the builder to get an [Offset](::planus::Offset) to a serialized [DropshotTilesByTeam].
             #[inline]
-            pub fn finish(self, builder: &mut ::planus::Builder) -> ::planus::Offset<DropshotTilesByTeam>
+            pub fn finish(
+                self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<DropshotTilesByTeam>
             where
                 Self: ::planus::WriteAsOffset<DropshotTilesByTeam>,
             {
@@ -5399,12 +5862,16 @@ mod root {
         impl<
             T0: ::planus::WriteAs<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>,
             T1: ::planus::WriteAs<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>,
-        > ::planus::WriteAs<::planus::Offset<DropshotTilesByTeam>> for DropshotTilesByTeamBuilder<(T0, T1)>
+        > ::planus::WriteAs<::planus::Offset<DropshotTilesByTeam>>
+            for DropshotTilesByTeamBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<DropshotTilesByTeam>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<DropshotTilesByTeam> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<DropshotTilesByTeam> {
                 ::planus::WriteAsOffset::prepare(self, builder)
             }
         }
@@ -5412,7 +5879,8 @@ mod root {
         impl<
             T0: ::planus::WriteAs<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>,
             T1: ::planus::WriteAs<::planus::Offset<[::planus::Offset<self::DropshotTile>]>>,
-        > ::planus::WriteAsOptional<::planus::Offset<DropshotTilesByTeam>> for DropshotTilesByTeamBuilder<(T0, T1)>
+        > ::planus::WriteAsOptional<::planus::Offset<DropshotTilesByTeam>>
+            for DropshotTilesByTeamBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<DropshotTilesByTeam>;
 
@@ -5431,7 +5899,10 @@ mod root {
         > ::planus::WriteAsOffset<DropshotTilesByTeam> for DropshotTilesByTeamBuilder<(T0, T1)>
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<DropshotTilesByTeam> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<DropshotTilesByTeam> {
                 let (v0, v1) = &self.0;
                 DropshotTilesByTeam::create(builder, v0, v1)
             }
@@ -5444,16 +5915,22 @@ mod root {
         impl<'a> DropshotTilesByTeamRef<'a> {
             /// Getter for the [`blue_tiles` field](DropshotTilesByTeam#structfield.blue_tiles).
             #[inline]
-            pub fn blue_tiles(&self) -> ::planus::Result<::planus::Vector<'a, ::planus::Result<self::DropshotTileRef<'a>>>> {
-                self.0.access_required(0, "DropshotTilesByTeam", "blue_tiles")
+            pub fn blue_tiles(
+                &self,
+            ) -> ::planus::Result<::planus::Vector<'a, ::planus::Result<self::DropshotTileRef<'a>>>>
+            {
+                self.0
+                    .access_required(0, "DropshotTilesByTeam", "blue_tiles")
             }
 
             /// Getter for the [`orange_tiles` field](DropshotTilesByTeam#structfield.orange_tiles).
             #[inline]
             pub fn orange_tiles(
                 &self,
-            ) -> ::planus::Result<::planus::Vector<'a, ::planus::Result<self::DropshotTileRef<'a>>>> {
-                self.0.access_required(1, "DropshotTilesByTeam", "orange_tiles")
+            ) -> ::planus::Result<::planus::Vector<'a, ::planus::Result<self::DropshotTileRef<'a>>>>
+            {
+                self.0
+                    .access_required(1, "DropshotTilesByTeam", "orange_tiles")
             }
         }
 
@@ -5484,7 +5961,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -5492,9 +5971,16 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
                 ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
-                    error_kind.with_error_location("[DropshotTilesByTeamRef]", "get", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "[DropshotTilesByTeamRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -5536,7 +6022,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[DropshotTilesByTeamRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[DropshotTilesByTeamRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -5584,14 +6072,19 @@ mod root {
 
         impl ::planus::WriteAsOffset<WheelsWithContact> for WheelsWithContact {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<WheelsWithContact> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::planus::Offset<WheelsWithContact> {
                 unsafe {
                     builder.write_with(4, 0, |buffer_position, bytes| {
                         let bytes = bytes.as_mut_ptr();
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 4])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 4]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -5690,7 +6183,10 @@ mod root {
 
         impl<'a> ::core::cmp::Eq for WheelsWithContactRef<'a> {}
         impl<'a, 'b> ::core::cmp::PartialOrd<WheelsWithContactRef<'a>> for WheelsWithContactRef<'b> {
-            fn partial_cmp(&self, other: &WheelsWithContactRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &WheelsWithContactRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 ::core::option::Option::Some(::core::cmp::Ord::cmp(self, other))
             }
         }
@@ -5729,7 +6225,10 @@ mod root {
             const STRIDE: usize = 4;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -5825,7 +6324,8 @@ mod root {
             /// The field `demo_respawn_timer` in the table `CarState`
             pub demo_respawn_timer: f32,
             /// The field `ball_hit_info` in the table `CarState`
-            pub ball_hit_info: ::core::option::Option<::planus::alloc::boxed::Box<self::BallHitInfo>>,
+            pub ball_hit_info:
+                ::core::option::Option<::planus::alloc::boxed::Box<self::BallHitInfo>>,
             /// The field `last_controls` in the table `CarState`
             pub last_controls: self::CarControls,
         }
@@ -5929,7 +6429,8 @@ mod root {
                 let prepared_handbrake_val = field_handbrake_val.prepare(builder, &0.0);
                 let prepared_is_auto_flipping = field_is_auto_flipping.prepare(builder, &false);
                 let prepared_auto_flip_timer = field_auto_flip_timer.prepare(builder, &0.0);
-                let prepared_auto_flip_torque_scale = field_auto_flip_torque_scale.prepare(builder, &0.0);
+                let prepared_auto_flip_torque_scale =
+                    field_auto_flip_torque_scale.prepare(builder, &0.0);
                 let prepared_world_contact_normal = field_world_contact_normal.prepare(builder);
                 let prepared_car_contact = field_car_contact.prepare(builder);
                 let prepared_is_demoed = field_is_demoed.prepare(builder, &false);
@@ -5937,7 +6438,8 @@ mod root {
                 let prepared_ball_hit_info = field_ball_hit_info.prepare(builder);
                 let prepared_last_controls = field_last_controls.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<62> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<62> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<self::PhysState>(0);
                 table_writer.write_entry::<self::Vec3>(6);
                 if prepared_jump_time.is_some() {
@@ -6022,34 +6524,48 @@ mod root {
                     table_writer.finish(builder, |object_writer| {
                         object_writer.write::<_, _, 72>(&prepared_physics);
                         object_writer.write::<_, _, 12>(&prepared_flip_rel_torque);
-                        if let ::core::option::Option::Some(prepared_jump_time) = prepared_jump_time {
+                        if let ::core::option::Option::Some(prepared_jump_time) = prepared_jump_time
+                        {
                             object_writer.write::<_, _, 4>(&prepared_jump_time);
                         }
-                        if let ::core::option::Option::Some(prepared_flip_time) = prepared_flip_time {
+                        if let ::core::option::Option::Some(prepared_flip_time) = prepared_flip_time
+                        {
                             object_writer.write::<_, _, 4>(&prepared_flip_time);
                         }
                         if let ::core::option::Option::Some(prepared_air_time) = prepared_air_time {
                             object_writer.write::<_, _, 4>(&prepared_air_time);
                         }
-                        if let ::core::option::Option::Some(prepared_air_time_since_jump) = prepared_air_time_since_jump {
+                        if let ::core::option::Option::Some(prepared_air_time_since_jump) =
+                            prepared_air_time_since_jump
+                        {
                             object_writer.write::<_, _, 4>(&prepared_air_time_since_jump);
                         }
                         if let ::core::option::Option::Some(prepared_boost) = prepared_boost {
                             object_writer.write::<_, _, 4>(&prepared_boost);
                         }
-                        if let ::core::option::Option::Some(prepared_time_since_boosted) = prepared_time_since_boosted {
+                        if let ::core::option::Option::Some(prepared_time_since_boosted) =
+                            prepared_time_since_boosted
+                        {
                             object_writer.write::<_, _, 4>(&prepared_time_since_boosted);
                         }
-                        if let ::core::option::Option::Some(prepared_boosting_time) = prepared_boosting_time {
+                        if let ::core::option::Option::Some(prepared_boosting_time) =
+                            prepared_boosting_time
+                        {
                             object_writer.write::<_, _, 4>(&prepared_boosting_time);
                         }
-                        if let ::core::option::Option::Some(prepared_supersonic_time) = prepared_supersonic_time {
+                        if let ::core::option::Option::Some(prepared_supersonic_time) =
+                            prepared_supersonic_time
+                        {
                             object_writer.write::<_, _, 4>(&prepared_supersonic_time);
                         }
-                        if let ::core::option::Option::Some(prepared_handbrake_val) = prepared_handbrake_val {
+                        if let ::core::option::Option::Some(prepared_handbrake_val) =
+                            prepared_handbrake_val
+                        {
                             object_writer.write::<_, _, 4>(&prepared_handbrake_val);
                         }
-                        if let ::core::option::Option::Some(prepared_auto_flip_timer) = prepared_auto_flip_timer {
+                        if let ::core::option::Option::Some(prepared_auto_flip_timer) =
+                            prepared_auto_flip_timer
+                        {
                             object_writer.write::<_, _, 4>(&prepared_auto_flip_timer);
                         }
                         if let ::core::option::Option::Some(prepared_auto_flip_torque_scale) =
@@ -6057,48 +6573,75 @@ mod root {
                         {
                             object_writer.write::<_, _, 4>(&prepared_auto_flip_torque_scale);
                         }
-                        if let ::core::option::Option::Some(prepared_world_contact_normal) = prepared_world_contact_normal {
+                        if let ::core::option::Option::Some(prepared_world_contact_normal) =
+                            prepared_world_contact_normal
+                        {
                             object_writer.write::<_, _, 12>(&prepared_world_contact_normal);
                         }
-                        if let ::core::option::Option::Some(prepared_car_contact) = prepared_car_contact {
+                        if let ::core::option::Option::Some(prepared_car_contact) =
+                            prepared_car_contact
+                        {
                             object_writer.write::<_, _, 4>(&prepared_car_contact);
                         }
-                        if let ::core::option::Option::Some(prepared_demo_respawn_timer) = prepared_demo_respawn_timer {
+                        if let ::core::option::Option::Some(prepared_demo_respawn_timer) =
+                            prepared_demo_respawn_timer
+                        {
                             object_writer.write::<_, _, 4>(&prepared_demo_respawn_timer);
                         }
-                        if let ::core::option::Option::Some(prepared_ball_hit_info) = prepared_ball_hit_info {
+                        if let ::core::option::Option::Some(prepared_ball_hit_info) =
+                            prepared_ball_hit_info
+                        {
                             object_writer.write::<_, _, 4>(&prepared_ball_hit_info);
                         }
                         object_writer.write::<_, _, 24>(&prepared_last_controls);
-                        if let ::core::option::Option::Some(prepared_is_on_ground) = prepared_is_on_ground {
+                        if let ::core::option::Option::Some(prepared_is_on_ground) =
+                            prepared_is_on_ground
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_on_ground);
                         }
                         object_writer.write::<_, _, 4>(&prepared_wheels_with_contact);
-                        if let ::core::option::Option::Some(prepared_has_jumped) = prepared_has_jumped {
+                        if let ::core::option::Option::Some(prepared_has_jumped) =
+                            prepared_has_jumped
+                        {
                             object_writer.write::<_, _, 1>(&prepared_has_jumped);
                         }
-                        if let ::core::option::Option::Some(prepared_has_double_jumped) = prepared_has_double_jumped {
+                        if let ::core::option::Option::Some(prepared_has_double_jumped) =
+                            prepared_has_double_jumped
+                        {
                             object_writer.write::<_, _, 1>(&prepared_has_double_jumped);
                         }
-                        if let ::core::option::Option::Some(prepared_has_flipped) = prepared_has_flipped {
+                        if let ::core::option::Option::Some(prepared_has_flipped) =
+                            prepared_has_flipped
+                        {
                             object_writer.write::<_, _, 1>(&prepared_has_flipped);
                         }
-                        if let ::core::option::Option::Some(prepared_is_flipping) = prepared_is_flipping {
+                        if let ::core::option::Option::Some(prepared_is_flipping) =
+                            prepared_is_flipping
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_flipping);
                         }
-                        if let ::core::option::Option::Some(prepared_is_jumping) = prepared_is_jumping {
+                        if let ::core::option::Option::Some(prepared_is_jumping) =
+                            prepared_is_jumping
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_jumping);
                         }
-                        if let ::core::option::Option::Some(prepared_is_boosting) = prepared_is_boosting {
+                        if let ::core::option::Option::Some(prepared_is_boosting) =
+                            prepared_is_boosting
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_boosting);
                         }
-                        if let ::core::option::Option::Some(prepared_is_supersonic) = prepared_is_supersonic {
+                        if let ::core::option::Option::Some(prepared_is_supersonic) =
+                            prepared_is_supersonic
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_supersonic);
                         }
-                        if let ::core::option::Option::Some(prepared_is_auto_flipping) = prepared_is_auto_flipping {
+                        if let ::core::option::Option::Some(prepared_is_auto_flipping) =
+                            prepared_is_auto_flipping
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_auto_flipping);
                         }
-                        if let ::core::option::Option::Some(prepared_is_demoed) = prepared_is_demoed {
+                        if let ::core::option::Option::Some(prepared_is_demoed) = prepared_is_demoed
+                        {
                             object_writer.write::<_, _, 1>(&prepared_is_demoed);
                         }
                     });
@@ -6120,7 +6663,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<CarState>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<CarState>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -6230,7 +6776,9 @@ mod root {
             /// Sets the [`has_jumped` field](CarState#structfield.has_jumped) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn has_jumped_as_default(self) -> CarStateBuilder<(T0, T1, T2, ::planus::DefaultValue)> {
+            pub fn has_jumped_as_default(
+                self,
+            ) -> CarStateBuilder<(T0, T1, T2, ::planus::DefaultValue)> {
                 self.has_jumped(::planus::DefaultValue)
             }
         }
@@ -6250,7 +6798,9 @@ mod root {
             /// Sets the [`has_double_jumped` field](CarState#structfield.has_double_jumped) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn has_double_jumped_as_default(self) -> CarStateBuilder<(T0, T1, T2, T3, ::planus::DefaultValue)> {
+            pub fn has_double_jumped_as_default(
+                self,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, ::planus::DefaultValue)> {
                 self.has_double_jumped(::planus::DefaultValue)
             }
         }
@@ -6270,7 +6820,9 @@ mod root {
             /// Sets the [`has_flipped` field](CarState#structfield.has_flipped) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn has_flipped_as_default(self) -> CarStateBuilder<(T0, T1, T2, T3, T4, ::planus::DefaultValue)> {
+            pub fn has_flipped_as_default(
+                self,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, ::planus::DefaultValue)> {
                 self.has_flipped(::planus::DefaultValue)
             }
         }
@@ -6279,7 +6831,10 @@ mod root {
             /// Setter for the [`flip_rel_torque` field](CarState#structfield.flip_rel_torque).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn flip_rel_torque<T6>(self, value: T6) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6)>
+            pub fn flip_rel_torque<T6>(
+                self,
+                value: T6,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6)>
             where
                 T6: ::planus::WriteAs<self::Vec3>,
             {
@@ -6292,7 +6847,10 @@ mod root {
             /// Setter for the [`jump_time` field](CarState#structfield.jump_time).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn jump_time<T7>(self, value: T7) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7)>
+            pub fn jump_time<T7>(
+                self,
+                value: T7,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7)>
             where
                 T7: ::planus::WriteAsDefault<f32, f32>,
             {
@@ -6303,7 +6861,9 @@ mod root {
             /// Sets the [`jump_time` field](CarState#structfield.jump_time) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn jump_time_as_default(self) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, ::planus::DefaultValue)> {
+            pub fn jump_time_as_default(
+                self,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, ::planus::DefaultValue)> {
                 self.jump_time(::planus::DefaultValue)
             }
         }
@@ -6312,7 +6872,10 @@ mod root {
             /// Setter for the [`flip_time` field](CarState#structfield.flip_time).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn flip_time<T8>(self, value: T8) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8)>
+            pub fn flip_time<T8>(
+                self,
+                value: T8,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8)>
             where
                 T8: ::planus::WriteAsDefault<f32, f32>,
             {
@@ -6323,7 +6886,10 @@ mod root {
             /// Sets the [`flip_time` field](CarState#structfield.flip_time) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn flip_time_as_default(self) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, ::planus::DefaultValue)> {
+            pub fn flip_time_as_default(
+                self,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, ::planus::DefaultValue)>
+            {
                 self.flip_time(::planus::DefaultValue)
             }
         }
@@ -6332,7 +6898,10 @@ mod root {
             /// Setter for the [`is_flipping` field](CarState#structfield.is_flipping).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn is_flipping<T9>(self, value: T9) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)>
+            pub fn is_flipping<T9>(
+                self,
+                value: T9,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)>
             where
                 T9: ::planus::WriteAsDefault<bool, bool>,
             {
@@ -6345,16 +6914,22 @@ mod root {
             #[allow(clippy::type_complexity)]
             pub fn is_flipping_as_default(
                 self,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, ::planus::DefaultValue)> {
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, ::planus::DefaultValue)>
+            {
                 self.is_flipping(::planus::DefaultValue)
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)> {
+        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>
+            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)>
+        {
             /// Setter for the [`is_jumping` field](CarState#structfield.is_jumping).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn is_jumping<T10>(self, value: T10) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)>
+            pub fn is_jumping<T10>(
+                self,
+                value: T10,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)>
             where
                 T10: ::planus::WriteAsDefault<bool, bool>,
             {
@@ -6367,16 +6942,33 @@ mod root {
             #[allow(clippy::type_complexity)]
             pub fn is_jumping_as_default(
                 self,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, ::planus::DefaultValue)> {
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                ::planus::DefaultValue,
+            )> {
                 self.is_jumping(::planus::DefaultValue)
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)> {
+        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>
+            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)>
+        {
             /// Setter for the [`air_time` field](CarState#structfield.air_time).
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn air_time<T11>(self, value: T11) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)>
+            pub fn air_time<T11>(
+                self,
+                value: T11,
+            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)>
             where
                 T11: ::planus::WriteAsDefault<f32, f32>,
             {
@@ -6389,12 +6981,27 @@ mod root {
             #[allow(clippy::type_complexity)]
             pub fn air_time_as_default(
                 self,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, ::planus::DefaultValue)> {
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                ::planus::DefaultValue,
+            )> {
                 self.air_time(::planus::DefaultValue)
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)> {
+        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11>
+            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)>
+        {
             /// Setter for the [`air_time_since_jump` field](CarState#structfield.air_time_since_jump).
             #[inline]
             #[allow(clippy::type_complexity)]
@@ -6414,7 +7021,21 @@ mod root {
             #[allow(clippy::type_complexity)]
             pub fn air_time_since_jump_as_default(
                 self,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, ::planus::DefaultValue)> {
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                ::planus::DefaultValue,
+            )> {
                 self.air_time_since_jump(::planus::DefaultValue)
             }
         }
@@ -6441,8 +7062,22 @@ mod root {
             #[allow(clippy::type_complexity)]
             pub fn boost_as_default(
                 self,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, ::planus::DefaultValue)>
-            {
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                ::planus::DefaultValue,
+            )> {
                 self.boost(::planus::DefaultValue)
             }
         }
@@ -6456,12 +7091,30 @@ mod root {
             pub fn time_since_boosted<T14>(
                 self,
                 value: T14,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14)>
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+            )>
             where
                 T14: ::planus::WriteAsDefault<f32, f32>,
             {
                 let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13) = self.0;
-                CarStateBuilder((v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, value))
+                CarStateBuilder((
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, value,
+                ))
             }
 
             /// Sets the [`time_since_boosted` field](CarState#structfield.time_since_boosted) to the default value.
@@ -6491,7 +7144,23 @@ mod root {
         }
 
         impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14>
-            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14)>
+            CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+            )>
         {
             /// Setter for the [`is_boosting` field](CarState#structfield.is_boosting).
             #[inline]
@@ -6499,12 +7168,31 @@ mod root {
             pub fn is_boosting<T15>(
                 self,
                 value: T15,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)>
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+                T15,
+            )>
             where
                 T15: ::planus::WriteAsDefault<bool, bool>,
             {
                 let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14) = self.0;
-                CarStateBuilder((v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, value))
+                CarStateBuilder((
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, value,
+                ))
             }
 
             /// Sets the [`is_boosting` field](CarState#structfield.is_boosting) to the default value.
@@ -6535,7 +7223,24 @@ mod root {
         }
 
         impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15>
-            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15)>
+            CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+                T15,
+            )>
         {
             /// Setter for the [`boosting_time` field](CarState#structfield.boosting_time).
             #[inline]
@@ -6543,12 +7248,32 @@ mod root {
             pub fn boosting_time<T16>(
                 self,
                 value: T16,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16)>
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+                T15,
+                T16,
+            )>
             where
                 T16: ::planus::WriteAsDefault<f32, f32>,
             {
                 let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15) = self.0;
-                CarStateBuilder((v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, value))
+                CarStateBuilder((
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, value,
+                ))
             }
 
             /// Sets the [`boosting_time` field](CarState#structfield.boosting_time) to the default value.
@@ -6580,7 +7305,25 @@ mod root {
         }
 
         impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16>
-            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16)>
+            CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+                T15,
+                T16,
+            )>
         {
             /// Setter for the [`is_supersonic` field](CarState#structfield.is_supersonic).
             #[inline]
@@ -6588,13 +7331,34 @@ mod root {
             pub fn is_supersonic<T17>(
                 self,
                 value: T17,
-            ) -> CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17)>
+            ) -> CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+                T15,
+                T16,
+                T17,
+            )>
             where
                 T17: ::planus::WriteAsDefault<bool, bool>,
             {
-                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16) = self.0;
+                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16) =
+                    self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16,
+                    value,
                 ))
             }
 
@@ -6628,7 +7392,26 @@ mod root {
         }
 
         impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17>
-            CarStateBuilder<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17)>
+            CarStateBuilder<(
+                T0,
+                T1,
+                T2,
+                T3,
+                T4,
+                T5,
+                T6,
+                T7,
+                T8,
+                T9,
+                T10,
+                T11,
+                T12,
+                T13,
+                T14,
+                T15,
+                T16,
+                T17,
+            )>
         {
             /// Setter for the [`supersonic_time` field](CarState#structfield.supersonic_time).
             #[inline]
@@ -6660,9 +7443,29 @@ mod root {
             where
                 T18: ::planus::WriteAsDefault<f32, f32>,
             {
-                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17) = self.0;
+                let (
+                    v0,
+                    v1,
+                    v2,
+                    v3,
+                    v4,
+                    v5,
+                    v6,
+                    v7,
+                    v8,
+                    v9,
+                    v10,
+                    v11,
+                    v12,
+                    v13,
+                    v14,
+                    v15,
+                    v16,
+                    v17,
+                ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    value,
                 ))
             }
 
@@ -6750,9 +7553,30 @@ mod root {
             where
                 T19: ::planus::WriteAsDefault<f32, f32>,
             {
-                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18) = self.0;
+                let (
+                    v0,
+                    v1,
+                    v2,
+                    v3,
+                    v4,
+                    v5,
+                    v6,
+                    v7,
+                    v8,
+                    v9,
+                    v10,
+                    v11,
+                    v12,
+                    v13,
+                    v14,
+                    v15,
+                    v16,
+                    v17,
+                    v18,
+                ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, value,
                 ))
             }
 
@@ -6787,7 +7611,28 @@ mod root {
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19>
+        impl<
+            T0,
+            T1,
+            T2,
+            T3,
+            T4,
+            T5,
+            T6,
+            T7,
+            T8,
+            T9,
+            T10,
+            T11,
+            T12,
+            T13,
+            T14,
+            T15,
+            T16,
+            T17,
+            T18,
+            T19,
+        >
             CarStateBuilder<(
                 T0,
                 T1,
@@ -6843,9 +7688,31 @@ mod root {
             where
                 T20: ::planus::WriteAsDefault<bool, bool>,
             {
-                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19) = self.0;
+                let (
+                    v0,
+                    v1,
+                    v2,
+                    v3,
+                    v4,
+                    v5,
+                    v6,
+                    v7,
+                    v8,
+                    v9,
+                    v10,
+                    v11,
+                    v12,
+                    v13,
+                    v14,
+                    v15,
+                    v16,
+                    v17,
+                    v18,
+                    v19,
+                ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, value,
                 ))
             }
 
@@ -6881,7 +7748,29 @@ mod root {
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20>
+        impl<
+            T0,
+            T1,
+            T2,
+            T3,
+            T4,
+            T5,
+            T6,
+            T7,
+            T8,
+            T9,
+            T10,
+            T11,
+            T12,
+            T13,
+            T14,
+            T15,
+            T16,
+            T17,
+            T18,
+            T19,
+            T20,
+        >
             CarStateBuilder<(
                 T0,
                 T1,
@@ -6939,9 +7828,32 @@ mod root {
             where
                 T21: ::planus::WriteAsDefault<f32, f32>,
             {
-                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20) = self.0;
+                let (
+                    v0,
+                    v1,
+                    v2,
+                    v3,
+                    v4,
+                    v5,
+                    v6,
+                    v7,
+                    v8,
+                    v9,
+                    v10,
+                    v11,
+                    v12,
+                    v13,
+                    v14,
+                    v15,
+                    v16,
+                    v17,
+                    v18,
+                    v19,
+                    v20,
+                ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, value,
                 ))
             }
 
@@ -6978,7 +7890,30 @@ mod root {
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21>
+        impl<
+            T0,
+            T1,
+            T2,
+            T3,
+            T4,
+            T5,
+            T6,
+            T7,
+            T8,
+            T9,
+            T10,
+            T11,
+            T12,
+            T13,
+            T14,
+            T15,
+            T16,
+            T17,
+            T18,
+            T19,
+            T20,
+            T21,
+        >
             CarStateBuilder<(
                 T0,
                 T1,
@@ -7038,11 +7973,33 @@ mod root {
             where
                 T22: ::planus::WriteAsDefault<f32, f32>,
             {
-                let (v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21) =
-                    self.0;
+                let (
+                    v0,
+                    v1,
+                    v2,
+                    v3,
+                    v4,
+                    v5,
+                    v6,
+                    v7,
+                    v8,
+                    v9,
+                    v10,
+                    v11,
+                    v12,
+                    v13,
+                    v14,
+                    v15,
+                    v16,
+                    v17,
+                    v18,
+                    v19,
+                    v20,
+                    v21,
+                ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21,
-                    value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, value,
                 ))
             }
 
@@ -7080,7 +8037,31 @@ mod root {
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22>
+        impl<
+            T0,
+            T1,
+            T2,
+            T3,
+            T4,
+            T5,
+            T6,
+            T7,
+            T8,
+            T9,
+            T10,
+            T11,
+            T12,
+            T13,
+            T14,
+            T15,
+            T16,
+            T17,
+            T18,
+            T19,
+            T20,
+            T21,
+            T22,
+        >
             CarStateBuilder<(
                 T0,
                 T1,
@@ -7168,8 +8149,8 @@ mod root {
                     v22,
                 ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22,
-                    value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, v22, value,
                 ))
             }
 
@@ -7208,7 +8189,32 @@ mod root {
             }
         }
 
-        impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23>
+        impl<
+            T0,
+            T1,
+            T2,
+            T3,
+            T4,
+            T5,
+            T6,
+            T7,
+            T8,
+            T9,
+            T10,
+            T11,
+            T12,
+            T13,
+            T14,
+            T15,
+            T16,
+            T17,
+            T18,
+            T19,
+            T20,
+            T21,
+            T22,
+            T23,
+        >
             CarStateBuilder<(
                 T0,
                 T1,
@@ -7299,8 +8305,8 @@ mod root {
                     v23,
                 ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22,
-                    v23, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, v22, v23, value,
                 ))
             }
 
@@ -7460,8 +8466,8 @@ mod root {
                     v24,
                 ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22,
-                    v23, v24, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, v22, v23, v24, value,
                 ))
             }
 
@@ -7626,8 +8632,8 @@ mod root {
                     v25,
                 ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22,
-                    v23, v24, v25, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, v22, v23, v24, v25, value,
                 ))
             }
 
@@ -7797,8 +8803,8 @@ mod root {
                     v26,
                 ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22,
-                    v23, v24, v25, v26, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, v22, v23, v24, v25, v26, value,
                 ))
             }
 
@@ -7973,8 +8979,8 @@ mod root {
                     v27,
                 ) = self.0;
                 CarStateBuilder((
-                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22,
-                    v23, v24, v25, v26, v27, value,
+                    v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17,
+                    v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, value,
                 ))
             }
         }
@@ -8189,7 +9195,10 @@ mod root {
             type Prepared = ::planus::Offset<CarState>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<CarState>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<CarState>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -8291,8 +9300,8 @@ mod root {
                     v28,
                 ) = &self.0;
                 CarState::create(
-                    builder, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20,
-                    v21, v22, v23, v24, v25, v26, v27, v28,
+                    builder, v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15,
+                    v16, v17, v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28,
                 )
             }
         }
@@ -8311,7 +9320,11 @@ mod root {
             /// Getter for the [`is_on_ground` field](CarState#structfield.is_on_ground).
             #[inline]
             pub fn is_on_ground(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(1, "CarState", "is_on_ground")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(1, "CarState", "is_on_ground")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`wheels_with_contact` field](CarState#structfield.wheels_with_contact).
@@ -8323,19 +9336,29 @@ mod root {
             /// Getter for the [`has_jumped` field](CarState#structfield.has_jumped).
             #[inline]
             pub fn has_jumped(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(3, "CarState", "has_jumped")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0.access(3, "CarState", "has_jumped")?.unwrap_or(false),
+                )
             }
 
             /// Getter for the [`has_double_jumped` field](CarState#structfield.has_double_jumped).
             #[inline]
             pub fn has_double_jumped(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(4, "CarState", "has_double_jumped")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(4, "CarState", "has_double_jumped")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`has_flipped` field](CarState#structfield.has_flipped).
             #[inline]
             pub fn has_flipped(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(5, "CarState", "has_flipped")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(5, "CarState", "has_flipped")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`flip_rel_torque` field](CarState#structfield.flip_rel_torque).
@@ -8347,37 +9370,55 @@ mod root {
             /// Getter for the [`jump_time` field](CarState#structfield.jump_time).
             #[inline]
             pub fn jump_time(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(7, "CarState", "jump_time")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0.access(7, "CarState", "jump_time")?.unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`flip_time` field](CarState#structfield.flip_time).
             #[inline]
             pub fn flip_time(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(8, "CarState", "flip_time")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0.access(8, "CarState", "flip_time")?.unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`is_flipping` field](CarState#structfield.is_flipping).
             #[inline]
             pub fn is_flipping(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(9, "CarState", "is_flipping")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(9, "CarState", "is_flipping")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`is_jumping` field](CarState#structfield.is_jumping).
             #[inline]
             pub fn is_jumping(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(10, "CarState", "is_jumping")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(10, "CarState", "is_jumping")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`air_time` field](CarState#structfield.air_time).
             #[inline]
             pub fn air_time(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(11, "CarState", "air_time")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0.access(11, "CarState", "air_time")?.unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`air_time_since_jump` field](CarState#structfield.air_time_since_jump).
             #[inline]
             pub fn air_time_since_jump(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(12, "CarState", "air_time_since_jump")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(12, "CarState", "air_time_since_jump")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`boost` field](CarState#structfield.boost).
@@ -8389,84 +9430,132 @@ mod root {
             /// Getter for the [`time_since_boosted` field](CarState#structfield.time_since_boosted).
             #[inline]
             pub fn time_since_boosted(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(14, "CarState", "time_since_boosted")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(14, "CarState", "time_since_boosted")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`is_boosting` field](CarState#structfield.is_boosting).
             #[inline]
             pub fn is_boosting(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(15, "CarState", "is_boosting")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(15, "CarState", "is_boosting")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`boosting_time` field](CarState#structfield.boosting_time).
             #[inline]
             pub fn boosting_time(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(16, "CarState", "boosting_time")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(16, "CarState", "boosting_time")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`is_supersonic` field](CarState#structfield.is_supersonic).
             #[inline]
             pub fn is_supersonic(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(17, "CarState", "is_supersonic")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(17, "CarState", "is_supersonic")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`supersonic_time` field](CarState#structfield.supersonic_time).
             #[inline]
             pub fn supersonic_time(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(18, "CarState", "supersonic_time")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(18, "CarState", "supersonic_time")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`handbrake_val` field](CarState#structfield.handbrake_val).
             #[inline]
             pub fn handbrake_val(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(19, "CarState", "handbrake_val")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(19, "CarState", "handbrake_val")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`is_auto_flipping` field](CarState#structfield.is_auto_flipping).
             #[inline]
             pub fn is_auto_flipping(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(20, "CarState", "is_auto_flipping")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(20, "CarState", "is_auto_flipping")?
+                        .unwrap_or(false),
+                )
             }
 
             /// Getter for the [`auto_flip_timer` field](CarState#structfield.auto_flip_timer).
             #[inline]
             pub fn auto_flip_timer(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(21, "CarState", "auto_flip_timer")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(21, "CarState", "auto_flip_timer")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`auto_flip_torque_scale` field](CarState#structfield.auto_flip_torque_scale).
             #[inline]
             pub fn auto_flip_torque_scale(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(22, "CarState", "auto_flip_torque_scale")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(22, "CarState", "auto_flip_torque_scale")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`world_contact_normal` field](CarState#structfield.world_contact_normal).
             #[inline]
-            pub fn world_contact_normal(&self) -> ::planus::Result<::core::option::Option<self::Vec3Ref<'a>>> {
+            pub fn world_contact_normal(
+                &self,
+            ) -> ::planus::Result<::core::option::Option<self::Vec3Ref<'a>>> {
                 self.0.access(23, "CarState", "world_contact_normal")
             }
 
             /// Getter for the [`car_contact` field](CarState#structfield.car_contact).
             #[inline]
-            pub fn car_contact(&self) -> ::planus::Result<::core::option::Option<self::CarContactRef<'a>>> {
+            pub fn car_contact(
+                &self,
+            ) -> ::planus::Result<::core::option::Option<self::CarContactRef<'a>>> {
                 self.0.access(24, "CarState", "car_contact")
             }
 
             /// Getter for the [`is_demoed` field](CarState#structfield.is_demoed).
             #[inline]
             pub fn is_demoed(&self) -> ::planus::Result<bool> {
-                ::core::result::Result::Ok(self.0.access(25, "CarState", "is_demoed")?.unwrap_or(false))
+                ::core::result::Result::Ok(
+                    self.0.access(25, "CarState", "is_demoed")?.unwrap_or(false),
+                )
             }
 
             /// Getter for the [`demo_respawn_timer` field](CarState#structfield.demo_respawn_timer).
             #[inline]
             pub fn demo_respawn_timer(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(26, "CarState", "demo_respawn_timer")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(26, "CarState", "demo_respawn_timer")?
+                        .unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`ball_hit_info` field](CarState#structfield.ball_hit_info).
             #[inline]
-            pub fn ball_hit_info(&self) -> ::planus::Result<::core::option::Option<self::BallHitInfoRef<'a>>> {
+            pub fn ball_hit_info(
+                &self,
+            ) -> ::planus::Result<::core::option::Option<self::BallHitInfoRef<'a>>> {
                 self.0.access(27, "CarState", "ball_hit_info")
             }
 
@@ -8503,15 +9592,21 @@ mod root {
                 f.field("is_auto_flipping", &self.is_auto_flipping());
                 f.field("auto_flip_timer", &self.auto_flip_timer());
                 f.field("auto_flip_torque_scale", &self.auto_flip_torque_scale());
-                if let ::core::option::Option::Some(field_world_contact_normal) = self.world_contact_normal().transpose() {
+                if let ::core::option::Option::Some(field_world_contact_normal) =
+                    self.world_contact_normal().transpose()
+                {
                     f.field("world_contact_normal", &field_world_contact_normal);
                 }
-                if let ::core::option::Option::Some(field_car_contact) = self.car_contact().transpose() {
+                if let ::core::option::Option::Some(field_car_contact) =
+                    self.car_contact().transpose()
+                {
                     f.field("car_contact", &field_car_contact);
                 }
                 f.field("is_demoed", &self.is_demoed());
                 f.field("demo_respawn_timer", &self.demo_respawn_timer());
-                if let ::core::option::Option::Some(field_ball_hit_info) = self.ball_hit_info().transpose() {
+                if let ::core::option::Option::Some(field_ball_hit_info) =
+                    self.ball_hit_info().transpose()
+                {
                     f.field("ball_hit_info", &field_ball_hit_info);
                 }
                 f.field("last_controls", &self.last_controls());
@@ -8529,7 +9624,9 @@ mod root {
                     is_on_ground: ::core::convert::TryInto::try_into(value.is_on_ground()?)?,
                     wheels_with_contact: ::core::convert::Into::into(value.wheels_with_contact()?),
                     has_jumped: ::core::convert::TryInto::try_into(value.has_jumped()?)?,
-                    has_double_jumped: ::core::convert::TryInto::try_into(value.has_double_jumped()?)?,
+                    has_double_jumped: ::core::convert::TryInto::try_into(
+                        value.has_double_jumped()?,
+                    )?,
                     has_flipped: ::core::convert::TryInto::try_into(value.has_flipped()?)?,
                     flip_rel_torque: ::core::convert::Into::into(value.flip_rel_torque()?),
                     jump_time: ::core::convert::TryInto::try_into(value.jump_time()?)?,
@@ -8537,31 +9634,47 @@ mod root {
                     is_flipping: ::core::convert::TryInto::try_into(value.is_flipping()?)?,
                     is_jumping: ::core::convert::TryInto::try_into(value.is_jumping()?)?,
                     air_time: ::core::convert::TryInto::try_into(value.air_time()?)?,
-                    air_time_since_jump: ::core::convert::TryInto::try_into(value.air_time_since_jump()?)?,
+                    air_time_since_jump: ::core::convert::TryInto::try_into(
+                        value.air_time_since_jump()?,
+                    )?,
                     boost: ::core::convert::TryInto::try_into(value.boost()?)?,
-                    time_since_boosted: ::core::convert::TryInto::try_into(value.time_since_boosted()?)?,
+                    time_since_boosted: ::core::convert::TryInto::try_into(
+                        value.time_since_boosted()?,
+                    )?,
                     is_boosting: ::core::convert::TryInto::try_into(value.is_boosting()?)?,
                     boosting_time: ::core::convert::TryInto::try_into(value.boosting_time()?)?,
                     is_supersonic: ::core::convert::TryInto::try_into(value.is_supersonic()?)?,
                     supersonic_time: ::core::convert::TryInto::try_into(value.supersonic_time()?)?,
                     handbrake_val: ::core::convert::TryInto::try_into(value.handbrake_val()?)?,
-                    is_auto_flipping: ::core::convert::TryInto::try_into(value.is_auto_flipping()?)?,
+                    is_auto_flipping: ::core::convert::TryInto::try_into(
+                        value.is_auto_flipping()?,
+                    )?,
                     auto_flip_timer: ::core::convert::TryInto::try_into(value.auto_flip_timer()?)?,
-                    auto_flip_torque_scale: ::core::convert::TryInto::try_into(value.auto_flip_torque_scale()?)?,
-                    world_contact_normal: value.world_contact_normal()?.map(::core::convert::Into::into),
-                    car_contact: if let ::core::option::Option::Some(car_contact) = value.car_contact()? {
-                        ::core::option::Option::Some(::planus::alloc::boxed::Box::new(::core::convert::TryInto::try_into(
-                            car_contact,
-                        )?))
+                    auto_flip_torque_scale: ::core::convert::TryInto::try_into(
+                        value.auto_flip_torque_scale()?,
+                    )?,
+                    world_contact_normal: value
+                        .world_contact_normal()?
+                        .map(::core::convert::Into::into),
+                    car_contact: if let ::core::option::Option::Some(car_contact) =
+                        value.car_contact()?
+                    {
+                        ::core::option::Option::Some(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryInto::try_into(car_contact)?,
+                        ))
                     } else {
                         ::core::option::Option::None
                     },
                     is_demoed: ::core::convert::TryInto::try_into(value.is_demoed()?)?,
-                    demo_respawn_timer: ::core::convert::TryInto::try_into(value.demo_respawn_timer()?)?,
-                    ball_hit_info: if let ::core::option::Option::Some(ball_hit_info) = value.ball_hit_info()? {
-                        ::core::option::Option::Some(::planus::alloc::boxed::Box::new(::core::convert::TryInto::try_into(
-                            ball_hit_info,
-                        )?))
+                    demo_respawn_timer: ::core::convert::TryInto::try_into(
+                        value.demo_respawn_timer()?,
+                    )?,
+                    ball_hit_info: if let ::core::option::Option::Some(ball_hit_info) =
+                        value.ball_hit_info()?
+                    {
+                        ::core::option::Option::Some(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryInto::try_into(ball_hit_info)?,
+                        ))
                     } else {
                         ::core::option::Option::None
                     },
@@ -8576,7 +9689,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -8584,9 +9699,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[CarStateRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[CarStateRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -8627,7 +9746,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[CarStateRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[CarStateRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -8679,7 +9800,8 @@ mod root {
                 let prepared_state = field_state.prepare(builder);
                 let prepared_config = field_config.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<12> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<12> =
+                    ::core::default::Default::default();
                 if prepared_id.is_some() {
                     table_writer.write_entry::<u64>(0);
                 }
@@ -8718,7 +9840,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<CarInfo>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<CarInfo>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -8833,12 +9958,16 @@ mod root {
             T1: ::planus::WriteAsDefault<self::Team, self::Team>,
             T2: ::planus::WriteAs<::planus::Offset<self::CarState>>,
             T3: ::planus::WriteAs<self::CarConfig>,
-        > ::planus::WriteAsOptional<::planus::Offset<CarInfo>> for CarInfoBuilder<(T0, T1, T2, T3)>
+        > ::planus::WriteAsOptional<::planus::Offset<CarInfo>>
+            for CarInfoBuilder<(T0, T1, T2, T3)>
         {
             type Prepared = ::planus::Offset<CarInfo>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<CarInfo>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<CarInfo>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -8871,7 +10000,11 @@ mod root {
             /// Getter for the [`team` field](CarInfo#structfield.team).
             #[inline]
             pub fn team(&self) -> ::planus::Result<self::Team> {
-                ::core::result::Result::Ok(self.0.access(1, "CarInfo", "team")?.unwrap_or(self::Team::Blue))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(1, "CarInfo", "team")?
+                        .unwrap_or(self::Team::Blue),
+                )
             }
 
             /// Getter for the [`state` field](CarInfo#structfield.state).
@@ -8906,7 +10039,9 @@ mod root {
                 ::core::result::Result::Ok(Self {
                     id: ::core::convert::TryInto::try_into(value.id()?)?,
                     team: ::core::convert::TryInto::try_into(value.team()?)?,
-                    state: ::planus::alloc::boxed::Box::new(::core::convert::TryInto::try_into(value.state()?)?),
+                    state: ::planus::alloc::boxed::Box::new(::core::convert::TryInto::try_into(
+                        value.state()?,
+                    )?),
                     config: ::core::convert::Into::into(value.config()?),
                 })
             }
@@ -8918,7 +10053,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -8926,9 +10063,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[CarInfoRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[CarInfoRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -8969,7 +10110,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[CarInfoRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[CarInfoRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -8992,7 +10135,8 @@ mod root {
             /// The field `pads` in the table `GameState`
             pub pads: ::core::option::Option<::planus::alloc::vec::Vec<self::BoostPadInfo>>,
             /// The field `tiles` in the table `GameState`
-            pub tiles: ::core::option::Option<::planus::alloc::boxed::Box<self::DropshotTilesByTeam>>,
+            pub tiles:
+                ::core::option::Option<::planus::alloc::boxed::Box<self::DropshotTilesByTeam>>,
         }
 
         #[allow(clippy::derivable_impls)]
@@ -9023,9 +10167,13 @@ mod root {
                 field_tick_rate: impl ::planus::WriteAsDefault<f32, f32>,
                 field_tick_count: impl ::planus::WriteAsDefault<u64, u64>,
                 field_game_mode: impl ::planus::WriteAsDefault<self::GameMode, self::GameMode>,
-                field_cars: impl ::planus::WriteAsOptional<::planus::Offset<[::planus::Offset<self::CarInfo>]>>,
+                field_cars: impl ::planus::WriteAsOptional<
+                    ::planus::Offset<[::planus::Offset<self::CarInfo>]>,
+                >,
                 field_ball: impl ::planus::WriteAs<self::BallState>,
-                field_pads: impl ::planus::WriteAsOptional<::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>>,
+                field_pads: impl ::planus::WriteAsOptional<
+                    ::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>,
+                >,
                 field_tiles: impl ::planus::WriteAsOptional<::planus::Offset<self::DropshotTilesByTeam>>,
             ) -> ::planus::Offset<Self> {
                 let prepared_tick_rate = field_tick_rate.prepare(builder, &0.0);
@@ -9036,7 +10184,8 @@ mod root {
                 let prepared_pads = field_pads.prepare(builder);
                 let prepared_tiles = field_tiles.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<18> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<18> =
+                    ::core::default::Default::default();
                 if prepared_tick_count.is_some() {
                     table_writer.write_entry::<u64>(1);
                 }
@@ -9045,10 +10194,12 @@ mod root {
                     table_writer.write_entry::<f32>(0);
                 }
                 if prepared_cars.is_some() {
-                    table_writer.write_entry::<::planus::Offset<[::planus::Offset<self::CarInfo>]>>(3);
+                    table_writer
+                        .write_entry::<::planus::Offset<[::planus::Offset<self::CarInfo>]>>(3);
                 }
                 if prepared_pads.is_some() {
-                    table_writer.write_entry::<::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>>(5);
+                    table_writer
+                        .write_entry::<::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>>(5);
                 }
                 if prepared_tiles.is_some() {
                     table_writer.write_entry::<::planus::Offset<self::DropshotTilesByTeam>>(6);
@@ -9059,11 +10210,14 @@ mod root {
 
                 unsafe {
                     table_writer.finish(builder, |object_writer| {
-                        if let ::core::option::Option::Some(prepared_tick_count) = prepared_tick_count {
+                        if let ::core::option::Option::Some(prepared_tick_count) =
+                            prepared_tick_count
+                        {
                             object_writer.write::<_, _, 8>(&prepared_tick_count);
                         }
                         object_writer.write::<_, _, 112>(&prepared_ball);
-                        if let ::core::option::Option::Some(prepared_tick_rate) = prepared_tick_rate {
+                        if let ::core::option::Option::Some(prepared_tick_rate) = prepared_tick_rate
+                        {
                             object_writer.write::<_, _, 4>(&prepared_tick_rate);
                         }
                         if let ::core::option::Option::Some(prepared_cars) = prepared_cars {
@@ -9075,7 +10229,8 @@ mod root {
                         if let ::core::option::Option::Some(prepared_tiles) = prepared_tiles {
                             object_writer.write::<_, _, 4>(&prepared_tiles);
                         }
-                        if let ::core::option::Option::Some(prepared_game_mode) = prepared_game_mode {
+                        if let ::core::option::Option::Some(prepared_game_mode) = prepared_game_mode
+                        {
                             object_writer.write::<_, _, 1>(&prepared_game_mode);
                         }
                     });
@@ -9097,7 +10252,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<GameState>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<GameState>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -9179,7 +10337,9 @@ mod root {
             /// Sets the [`game_mode` field](GameState#structfield.game_mode) to the default value.
             #[inline]
             #[allow(clippy::type_complexity)]
-            pub fn game_mode_as_default(self) -> GameStateBuilder<(T0, T1, ::planus::DefaultValue)> {
+            pub fn game_mode_as_default(
+                self,
+            ) -> GameStateBuilder<(T0, T1, ::planus::DefaultValue)> {
                 self.game_mode(::planus::DefaultValue)
             }
         }
@@ -9223,7 +10383,9 @@ mod root {
             #[allow(clippy::type_complexity)]
             pub fn pads<T5>(self, value: T5) -> GameStateBuilder<(T0, T1, T2, T3, T4, T5)>
             where
-                T5: ::planus::WriteAsOptional<::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>>,
+                T5: ::planus::WriteAsOptional<
+                        ::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>,
+                    >,
             {
                 let (v0, v1, v2, v3, v4) = self.0;
                 GameStateBuilder((v0, v1, v2, v3, v4, value))
@@ -9276,7 +10438,8 @@ mod root {
             T4: ::planus::WriteAs<self::BallState>,
             T5: ::planus::WriteAsOptional<::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>>,
             T6: ::planus::WriteAsOptional<::planus::Offset<self::DropshotTilesByTeam>>,
-        > ::planus::WriteAs<::planus::Offset<GameState>> for GameStateBuilder<(T0, T1, T2, T3, T4, T5, T6)>
+        > ::planus::WriteAs<::planus::Offset<GameState>>
+            for GameStateBuilder<(T0, T1, T2, T3, T4, T5, T6)>
         {
             type Prepared = ::planus::Offset<GameState>;
 
@@ -9294,12 +10457,16 @@ mod root {
             T4: ::planus::WriteAs<self::BallState>,
             T5: ::planus::WriteAsOptional<::planus::Offset<[::planus::Offset<self::BoostPadInfo>]>>,
             T6: ::planus::WriteAsOptional<::planus::Offset<self::DropshotTilesByTeam>>,
-        > ::planus::WriteAsOptional<::planus::Offset<GameState>> for GameStateBuilder<(T0, T1, T2, T3, T4, T5, T6)>
+        > ::planus::WriteAsOptional<::planus::Offset<GameState>>
+            for GameStateBuilder<(T0, T1, T2, T3, T4, T5, T6)>
         {
             type Prepared = ::planus::Offset<GameState>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<GameState>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<GameState>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -9329,27 +10496,38 @@ mod root {
             /// Getter for the [`tick_rate` field](GameState#structfield.tick_rate).
             #[inline]
             pub fn tick_rate(&self) -> ::planus::Result<f32> {
-                ::core::result::Result::Ok(self.0.access(0, "GameState", "tick_rate")?.unwrap_or(0.0))
+                ::core::result::Result::Ok(
+                    self.0.access(0, "GameState", "tick_rate")?.unwrap_or(0.0),
+                )
             }
 
             /// Getter for the [`tick_count` field](GameState#structfield.tick_count).
             #[inline]
             pub fn tick_count(&self) -> ::planus::Result<u64> {
-                ::core::result::Result::Ok(self.0.access(1, "GameState", "tick_count")?.unwrap_or(0))
+                ::core::result::Result::Ok(
+                    self.0.access(1, "GameState", "tick_count")?.unwrap_or(0),
+                )
             }
 
             /// Getter for the [`game_mode` field](GameState#structfield.game_mode).
             #[inline]
             pub fn game_mode(&self) -> ::planus::Result<self::GameMode> {
-                ::core::result::Result::Ok(self.0.access(2, "GameState", "game_mode")?.unwrap_or(self::GameMode::Soccar))
+                ::core::result::Result::Ok(
+                    self.0
+                        .access(2, "GameState", "game_mode")?
+                        .unwrap_or(self::GameMode::Soccar),
+                )
             }
 
             /// Getter for the [`cars` field](GameState#structfield.cars).
             #[inline]
             pub fn cars(
                 &self,
-            ) -> ::planus::Result<::core::option::Option<::planus::Vector<'a, ::planus::Result<self::CarInfoRef<'a>>>>>
-            {
+            ) -> ::planus::Result<
+                ::core::option::Option<
+                    ::planus::Vector<'a, ::planus::Result<self::CarInfoRef<'a>>>,
+                >,
+            > {
                 self.0.access(3, "GameState", "cars")
             }
 
@@ -9363,14 +10541,20 @@ mod root {
             #[inline]
             pub fn pads(
                 &self,
-            ) -> ::planus::Result<::core::option::Option<::planus::Vector<'a, ::planus::Result<self::BoostPadInfoRef<'a>>>>>
-            {
+            ) -> ::planus::Result<
+                ::core::option::Option<
+                    ::planus::Vector<'a, ::planus::Result<self::BoostPadInfoRef<'a>>>,
+                >,
+            > {
                 self.0.access(5, "GameState", "pads")
             }
 
             /// Getter for the [`tiles` field](GameState#structfield.tiles).
             #[inline]
-            pub fn tiles(&self) -> ::planus::Result<::core::option::Option<self::DropshotTilesByTeamRef<'a>>> {
+            pub fn tiles(
+                &self,
+            ) -> ::planus::Result<::core::option::Option<self::DropshotTilesByTeamRef<'a>>>
+            {
                 self.0.access(6, "GameState", "tiles")
             }
         }
@@ -9416,9 +10600,9 @@ mod root {
                         ::core::option::Option::None
                     },
                     tiles: if let ::core::option::Option::Some(tiles) = value.tiles()? {
-                        ::core::option::Option::Some(::planus::alloc::boxed::Box::new(::core::convert::TryInto::try_into(
-                            tiles,
-                        )?))
+                        ::core::option::Option::Some(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryInto::try_into(tiles)?,
+                        ))
                     } else {
                         ::core::option::Option::None
                     },
@@ -9432,7 +10616,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -9440,9 +10626,17 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[GameStateRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location(
+                        "[GameStateRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
+                })
             }
         }
 
@@ -9483,7 +10677,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[GameStateRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[GameStateRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -9528,7 +10724,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 8])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 8]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -9605,7 +10803,10 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<Vec2Ref<'a>> for Vec2Ref<'b> {
-            fn partial_cmp(&self, other: &Vec2Ref<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &Vec2Ref<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.x().partial_cmp(&other.x()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -9630,7 +10831,10 @@ mod root {
             const STRIDE: usize = 8;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -9649,7 +10853,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Vec2], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Vec2],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 8];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -9712,7 +10920,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 16])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 16]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -9802,12 +11012,18 @@ mod root {
 
         impl<'a, 'b> ::core::cmp::PartialEq<ColorRef<'a>> for ColorRef<'b> {
             fn eq(&self, other: &ColorRef<'_>) -> bool {
-                self.r() == other.r() && self.g() == other.g() && self.b() == other.b() && self.a() == other.a()
+                self.r() == other.r()
+                    && self.g() == other.g()
+                    && self.b() == other.b()
+                    && self.a() == other.a()
             }
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<ColorRef<'a>> for ColorRef<'b> {
-            fn partial_cmp(&self, other: &ColorRef<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &ColorRef<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.r().partial_cmp(&other.r()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -9842,7 +11058,10 @@ mod root {
             const STRIDE: usize = 16;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -9861,7 +11080,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Color], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Color],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 16];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(
@@ -9916,7 +11139,8 @@ mod root {
                 let prepared_end = field_end.prepare(builder);
                 let prepared_color = field_color.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<10> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<10> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<self::Vec2>(0);
                 table_writer.write_entry::<self::Vec2>(1);
                 table_writer.write_entry::<self::Color>(2);
@@ -9945,7 +11169,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Line2D>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Line2D>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -10013,8 +11240,11 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec2>, T1: ::planus::WriteAs<self::Vec2>, T2: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAs<::planus::Offset<Line2D>> for Line2DBuilder<(T0, T1, T2)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec2>,
+            T1: ::planus::WriteAs<self::Vec2>,
+            T2: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAs<::planus::Offset<Line2D>> for Line2DBuilder<(T0, T1, T2)>
         {
             type Prepared = ::planus::Offset<Line2D>;
 
@@ -10024,19 +11254,28 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec2>, T1: ::planus::WriteAs<self::Vec2>, T2: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAsOptional<::planus::Offset<Line2D>> for Line2DBuilder<(T0, T1, T2)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec2>,
+            T1: ::planus::WriteAs<self::Vec2>,
+            T2: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAsOptional<::planus::Offset<Line2D>> for Line2DBuilder<(T0, T1, T2)>
         {
             type Prepared = ::planus::Offset<Line2D>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Line2D>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Line2D>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec2>, T1: ::planus::WriteAs<self::Vec2>, T2: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAsOffset<Line2D> for Line2DBuilder<(T0, T1, T2)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec2>,
+            T1: ::planus::WriteAs<self::Vec2>,
+            T2: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAsOffset<Line2D> for Line2DBuilder<(T0, T1, T2)>
         {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<Line2D> {
@@ -10098,7 +11337,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -10106,9 +11347,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[Line2DRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[Line2DRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -10149,7 +11394,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[Line2DRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[Line2DRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -10196,7 +11443,8 @@ mod root {
                 let prepared_end = field_end.prepare(builder);
                 let prepared_color = field_color.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<10> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<10> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<self::Vec3>(0);
                 table_writer.write_entry::<self::Vec3>(1);
                 table_writer.write_entry::<self::Color>(2);
@@ -10225,7 +11473,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Line3D>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Line3D>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -10293,8 +11544,11 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec3>, T1: ::planus::WriteAs<self::Vec3>, T2: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAs<::planus::Offset<Line3D>> for Line3DBuilder<(T0, T1, T2)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec3>,
+            T1: ::planus::WriteAs<self::Vec3>,
+            T2: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAs<::planus::Offset<Line3D>> for Line3DBuilder<(T0, T1, T2)>
         {
             type Prepared = ::planus::Offset<Line3D>;
 
@@ -10304,19 +11558,28 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec3>, T1: ::planus::WriteAs<self::Vec3>, T2: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAsOptional<::planus::Offset<Line3D>> for Line3DBuilder<(T0, T1, T2)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec3>,
+            T1: ::planus::WriteAs<self::Vec3>,
+            T2: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAsOptional<::planus::Offset<Line3D>> for Line3DBuilder<(T0, T1, T2)>
         {
             type Prepared = ::planus::Offset<Line3D>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<Line3D>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<Line3D>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAs<self::Vec3>, T1: ::planus::WriteAs<self::Vec3>, T2: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAsOffset<Line3D> for Line3DBuilder<(T0, T1, T2)>
+        impl<
+            T0: ::planus::WriteAs<self::Vec3>,
+            T1: ::planus::WriteAs<self::Vec3>,
+            T2: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAsOffset<Line3D> for Line3DBuilder<(T0, T1, T2)>
         {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<Line3D> {
@@ -10378,7 +11641,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -10386,9 +11651,13 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[Line3DRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location("[Line3DRef]", "get", buffer.offset_from_start)
+                })
             }
         }
 
@@ -10429,7 +11698,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[Line3DRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[Line3DRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -10471,7 +11742,8 @@ mod root {
                 let prepared_positions = field_positions.prepare(builder);
                 let prepared_color = field_color.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<8> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<8> =
+                    ::core::default::Default::default();
                 table_writer.write_entry::<::planus::Offset<[self::Vec3]>>(0);
                 table_writer.write_entry::<self::Color>(1);
 
@@ -10498,7 +11770,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<LineStrip>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<LineStrip>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -10553,8 +11828,10 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<::planus::Offset<[self::Vec3]>>, T1: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAs<::planus::Offset<LineStrip>> for LineStripBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<::planus::Offset<[self::Vec3]>>,
+            T1: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAs<::planus::Offset<LineStrip>> for LineStripBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<LineStrip>;
 
@@ -10564,19 +11841,26 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAs<::planus::Offset<[self::Vec3]>>, T1: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAsOptional<::planus::Offset<LineStrip>> for LineStripBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<::planus::Offset<[self::Vec3]>>,
+            T1: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAsOptional<::planus::Offset<LineStrip>> for LineStripBuilder<(T0, T1)>
         {
             type Prepared = ::planus::Offset<LineStrip>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<LineStrip>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<LineStrip>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAs<::planus::Offset<[self::Vec3]>>, T1: ::planus::WriteAs<self::Color>>
-            ::planus::WriteAsOffset<LineStrip> for LineStripBuilder<(T0, T1)>
+        impl<
+            T0: ::planus::WriteAs<::planus::Offset<[self::Vec3]>>,
+            T1: ::planus::WriteAs<self::Color>,
+        > ::planus::WriteAsOffset<LineStrip> for LineStripBuilder<(T0, T1)>
         {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<LineStrip> {
@@ -10630,7 +11914,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -10638,9 +11924,17 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[LineStripRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location(
+                        "[LineStripRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
+                })
             }
         }
 
@@ -10681,7 +11975,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[LineStripRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[LineStripRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -10746,7 +12042,10 @@ mod root {
 
         impl ::planus::WriteAsOptionalUnion<Render> for Render {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Self>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Self>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -10813,7 +12112,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::Line2D>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Render>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Render>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -10832,7 +12134,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::Line3D>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Render>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Render>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -10851,7 +12156,10 @@ mod root {
             T: ::planus::WriteAsOffset<self::LineStrip>,
         {
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::UnionOffset<Render>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::UnionOffset<Render>> {
                 ::core::option::Option::Some(::planus::WriteAsUnion::prepare(self, builder))
             }
         }
@@ -10869,16 +12177,18 @@ mod root {
 
             fn try_from(value: RenderRef<'a>) -> ::planus::Result<Self> {
                 ::core::result::Result::Ok(match value {
-                    RenderRef::Line2D(value) => {
-                        Self::Line2D(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
-                    }
+                    RenderRef::Line2D(value) => Self::Line2D(::planus::alloc::boxed::Box::new(
+                        ::core::convert::TryFrom::try_from(value)?,
+                    )),
 
-                    RenderRef::Line3D(value) => {
-                        Self::Line3D(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
-                    }
+                    RenderRef::Line3D(value) => Self::Line3D(::planus::alloc::boxed::Box::new(
+                        ::core::convert::TryFrom::try_from(value)?,
+                    )),
 
                     RenderRef::LineStrip(value) => {
-                        Self::LineStrip(::planus::alloc::boxed::Box::new(::core::convert::TryFrom::try_from(value)?))
+                        Self::LineStrip(::planus::alloc::boxed::Box::new(
+                            ::core::convert::TryFrom::try_from(value)?,
+                        ))
                     }
                 })
             }
@@ -10891,12 +12201,20 @@ mod root {
                 field_offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
                 match tag {
-                    1 => ::core::result::Result::Ok(Self::Line2D(::planus::TableRead::from_buffer(buffer, field_offset)?)),
-                    2 => ::core::result::Result::Ok(Self::Line3D(::planus::TableRead::from_buffer(buffer, field_offset)?)),
-                    3 => {
-                        ::core::result::Result::Ok(Self::LineStrip(::planus::TableRead::from_buffer(buffer, field_offset)?))
+                    1 => ::core::result::Result::Ok(Self::Line2D(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    2 => ::core::result::Result::Ok(Self::Line3D(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    3 => ::core::result::Result::Ok(Self::LineStrip(
+                        ::planus::TableRead::from_buffer(buffer, field_offset)?,
+                    )),
+                    _ => {
+                        ::core::result::Result::Err(::planus::errors::ErrorKind::UnknownUnionTag {
+                            tag,
+                        })
                     }
-                    _ => ::core::result::Result::Err(::planus::errors::ErrorKind::UnknownUnionTag { tag }),
                 }
             }
         }
@@ -10943,7 +12261,8 @@ mod root {
                 let prepared_id = field_id.prepare(builder, &0);
                 let prepared_commands = field_commands.prepare(builder);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<10> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<10> =
+                    ::core::default::Default::default();
                 if prepared_id.is_some() {
                     table_writer.write_entry::<i32>(0);
                 }
@@ -10976,7 +12295,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<AddRender>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<AddRender>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -11055,7 +12377,10 @@ mod root {
             type Prepared = ::planus::Offset<AddRender>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<AddRender>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<AddRender>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -11083,8 +12408,11 @@ mod root {
 
             /// Getter for the [`commands` field](AddRender#structfield.commands).
             #[inline]
-            pub fn commands(&self) -> ::planus::Result<::planus::UnionVector<'a, self::RenderRef<'a>>> {
-                self.0.access_union_vector_required(1, "AddRender", "commands")
+            pub fn commands(
+                &self,
+            ) -> ::planus::Result<::planus::UnionVector<'a, self::RenderRef<'a>>> {
+                self.0
+                    .access_union_vector_required(1, "AddRender", "commands")
             }
         }
 
@@ -11115,7 +12443,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -11123,9 +12453,17 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
-                ::planus::TableRead::from_buffer(buffer, offset)
-                    .map_err(|error_kind| error_kind.with_error_location("[AddRenderRef]", "get", buffer.offset_from_start))
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
+                ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
+                    error_kind.with_error_location(
+                        "[AddRenderRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
+                })
             }
         }
 
@@ -11166,7 +12504,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[AddRenderRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[AddRenderRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -11201,7 +12541,8 @@ mod root {
             ) -> ::planus::Offset<Self> {
                 let prepared_id = field_id.prepare(builder, &0);
 
-                let mut table_writer: ::planus::table_writer::TableWriter<6> = ::core::default::Default::default();
+                let mut table_writer: ::planus::table_writer::TableWriter<6> =
+                    ::core::default::Default::default();
                 if prepared_id.is_some() {
                     table_writer.write_entry::<i32>(0);
                 }
@@ -11230,7 +12571,10 @@ mod root {
             type Prepared = ::planus::Offset<Self>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<RemoveRender>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<RemoveRender>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
@@ -11279,8 +12623,8 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<i32, i32>> ::planus::WriteAs<::planus::Offset<RemoveRender>>
-            for RemoveRenderBuilder<(T0,)>
+        impl<T0: ::planus::WriteAsDefault<i32, i32>>
+            ::planus::WriteAs<::planus::Offset<RemoveRender>> for RemoveRenderBuilder<(T0,)>
         {
             type Prepared = ::planus::Offset<RemoveRender>;
 
@@ -11290,18 +12634,24 @@ mod root {
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<i32, i32>> ::planus::WriteAsOptional<::planus::Offset<RemoveRender>>
+        impl<T0: ::planus::WriteAsDefault<i32, i32>>
+            ::planus::WriteAsOptional<::planus::Offset<RemoveRender>>
             for RemoveRenderBuilder<(T0,)>
         {
             type Prepared = ::planus::Offset<RemoveRender>;
 
             #[inline]
-            fn prepare(&self, builder: &mut ::planus::Builder) -> ::core::option::Option<::planus::Offset<RemoveRender>> {
+            fn prepare(
+                &self,
+                builder: &mut ::planus::Builder,
+            ) -> ::core::option::Option<::planus::Offset<RemoveRender>> {
                 ::core::option::Option::Some(::planus::WriteAsOffset::prepare(self, builder))
             }
         }
 
-        impl<T0: ::planus::WriteAsDefault<i32, i32>> ::planus::WriteAsOffset<RemoveRender> for RemoveRenderBuilder<(T0,)> {
+        impl<T0: ::planus::WriteAsDefault<i32, i32>> ::planus::WriteAsOffset<RemoveRender>
+            for RemoveRenderBuilder<(T0,)>
+        {
             #[inline]
             fn prepare(&self, builder: &mut ::planus::Builder) -> ::planus::Offset<RemoveRender> {
                 let (v0,) = &self.0;
@@ -11346,7 +12696,9 @@ mod root {
                 buffer: ::planus::SliceWithStartOffset<'a>,
                 offset: usize,
             ) -> ::core::result::Result<Self, ::planus::errors::ErrorKind> {
-                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(buffer, offset)?))
+                ::core::result::Result::Ok(Self(::planus::table_reader::Table::from_buffer(
+                    buffer, offset,
+                )?))
             }
         }
 
@@ -11354,9 +12706,16 @@ mod root {
             type Error = ::planus::Error;
             const STRIDE: usize = 4;
 
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> ::planus::Result<Self> {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> ::planus::Result<Self> {
                 ::planus::TableRead::from_buffer(buffer, offset).map_err(|error_kind| {
-                    error_kind.with_error_location("[RemoveRenderRef]", "get", buffer.offset_from_start)
+                    error_kind.with_error_location(
+                        "[RemoveRenderRef]",
+                        "get",
+                        buffer.offset_from_start,
+                    )
                 })
             }
         }
@@ -11398,7 +12757,9 @@ mod root {
                     },
                     0,
                 )
-                .map_err(|error_kind| error_kind.with_error_location("[RemoveRenderRef]", "read_as_root", 0))
+                .map_err(|error_kind| {
+                    error_kind.with_error_location("[RemoveRenderRef]", "read_as_root", 0)
+                })
             }
         }
 
@@ -11448,7 +12809,9 @@ mod root {
 
                         ::planus::WriteAsPrimitive::write(
                             self,
-                            ::planus::Cursor::new(&mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 12])),
+                            ::planus::Cursor::new(
+                                &mut *(bytes as *mut [::core::mem::MaybeUninit<u8>; 12]),
+                            ),
                             buffer_position,
                         );
                     });
@@ -11534,7 +12897,10 @@ mod root {
         }
 
         impl<'a, 'b> ::core::cmp::PartialOrd<Vec3Ref<'a>> for Vec3Ref<'b> {
-            fn partial_cmp(&self, other: &Vec3Ref<'_>) -> ::core::option::Option<::core::cmp::Ordering> {
+            fn partial_cmp(
+                &self,
+                other: &Vec3Ref<'_>,
+            ) -> ::core::option::Option<::core::cmp::Ordering> {
                 match self.x().partial_cmp(&other.x()) {
                     ::core::option::Option::Some(::core::cmp::Ordering::Equal) => (),
                     o => return o,
@@ -11564,7 +12930,10 @@ mod root {
             const STRIDE: usize = 12;
 
             #[inline]
-            unsafe fn from_buffer(buffer: ::planus::SliceWithStartOffset<'a>, offset: usize) -> Self {
+            unsafe fn from_buffer(
+                buffer: ::planus::SliceWithStartOffset<'a>,
+                offset: usize,
+            ) -> Self {
                 Self(unsafe { buffer.unchecked_advance_as_array(offset) })
             }
         }
@@ -11583,7 +12952,11 @@ mod root {
             }
 
             #[inline]
-            unsafe fn write_values(values: &[Vec3], bytes: *mut ::core::mem::MaybeUninit<u8>, buffer_position: u32) {
+            unsafe fn write_values(
+                values: &[Vec3],
+                bytes: *mut ::core::mem::MaybeUninit<u8>,
+                buffer_position: u32,
+            ) {
                 let bytes = bytes as *mut [::core::mem::MaybeUninit<u8>; 12];
                 for (i, v) in ::core::iter::Iterator::enumerate(values.iter()) {
                     ::planus::WriteAsPrimitive::write(

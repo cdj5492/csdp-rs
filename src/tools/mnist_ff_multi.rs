@@ -45,7 +45,10 @@ fn read_mnist_images(filename: &str) -> Vec<Vec<f32>> {
 
     log::info!(
         "  Loaded {} images of size {}x{} from {}",
-        count, rows, cols, filename
+        count,
+        rows,
+        cols,
+        filename
     );
 
     let mut images = Vec::with_capacity(count);
@@ -141,7 +144,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Evaluation complete in {:.3}s", eval_time.as_secs_f64());
     log::info!(
         "\n  Test Accuracy: {} / {} ({:.2}%)\n",
-        correct, n_test, accuracy
+        correct,
+        n_test,
+        accuracy
     );
 
     // Per-class breakdown
@@ -162,7 +167,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         log::info!(
             "    Digit {}: {:4} / {:4} ({:.1}%)",
-            c, class_correct[c], class_total[c], acc
+            c,
+            class_correct[c],
+            class_total[c],
+            acc
         );
     }
 
