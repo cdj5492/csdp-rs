@@ -10,6 +10,10 @@ pub struct FFMultiLayer {
     threshold: f64,
     num_epochs: usize,
     num_classes: usize,
+    /// Entropy regularization coefficient (RLGymPPO-style).
+    /// When > 0, a -ent_coef * H(π) term is added to train_binary's loss,
+    /// encouraging the action distribution to stay spread out.
+    pub ent_coef: f64,
 }
 
 impl FFMultiLayer {
@@ -40,6 +44,7 @@ impl FFMultiLayer {
             threshold: 2.0,
             num_epochs,
             num_classes,
+            ent_coef: 0.0,
         })
     }
 
@@ -50,15 +55,26 @@ impl FFMultiLayer {
         out.gelu()
     }
 
+    /// Reshape `(batch, nc * chunk_size)` → `(batch, nc, chunk_size)` and compute
+    /// mean(x²) over the chunk dimension, yielding `(batch, nc)` goodness scores.
+    /// Replaces the old `chunk()` + per-class loop — all classes computed in one GPU op.
+    fn goodness_all(out: &Tensor, nc: usize) -> CandleResult<Tensor> {
+        let batch = out.dim(0)?;
+        let chunk_size = out.dim(1)? / nc;
+        out.reshape((batch, nc, chunk_size))?.sqr()?.mean(2usize)
+    }
+
     pub fn train(&mut self, x: &Tensor, y: &[usize], layer_idx: usize) -> CandleResult<()> {
         let n_samples = y.len();
         let mini_batch_size = 512.min(n_samples);
+        let nc = self.num_classes;
+        let neg_scale = 1.0 / (nc as f64 - 1.0);
 
         for epoch in 0..self.num_epochs {
             let mut epoch_loss_sum = 0.0f32;
             let mut n_batches = 0;
-
             let mut offset = 0;
+
             while offset < n_samples {
                 let end = (offset + mini_batch_size).min(n_samples);
                 let batch_len = end - offset;
@@ -67,45 +83,30 @@ impl FFMultiLayer {
                 let y_batch = &y[offset..end];
 
                 let out = self.forward(&x_batch)?;
-                let chunks = out.chunk(self.num_classes, 1)?;
+                // All class goodnesses at once: (batch, nc)
+                let g = Self::goodness_all(&out, nc)?;
 
-                let mut total_loss = Tensor::zeros((), DType::F32, x.device())?;
-
-                for (c, chunk) in chunks.into_iter().enumerate() {
-                    let g = chunk.sqr()?.mean_keepdim(1)?;
-
-                    let mut pos_mask_vec = Vec::new();
-                    let mut neg_mask_vec = Vec::new();
-                    for &label in y_batch {
-                        if label == c {
-                            pos_mask_vec.push(1.0f32);
-                            neg_mask_vec.push(0.0f32);
-                        } else {
-                            pos_mask_vec.push(0.0f32);
-                            neg_mask_vec.push(1.0f32);
-                        }
-                    }
-                    let pos_mask = Tensor::from_vec(pos_mask_vec, (batch_len, 1), x.device())?;
-                    let neg_mask = Tensor::from_vec(neg_mask_vec, (batch_len, 1), x.device())?;
-
-                    let pos_term = g.affine(-1.0, self.threshold)?;
-                    let neg_term = g.affine(1.0, -self.threshold)?;
-
-                    let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                        .log()?
-                        .broadcast_mul(&pos_mask)?;
-                    let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                        .log()?
-                        .broadcast_mul(&neg_mask)?;
-
-                    let scale = 1.0 / (self.num_classes as f32 - 1.0);
-                    let neg_loss_scaled = (neg_loss * scale as f64)?;
-
-                    total_loss = (total_loss + pos_loss.sum_all()?)?;
-                    total_loss = (total_loss + neg_loss_scaled.sum_all()?)?;
+                // Build one-hot pos_mask + complement neg_mask in a single O(batch_len) loop.
+                // Old path: O(batch_len × nc) loop + 2×nc GPU tensor uploads per mini-batch.
+                // New path: O(batch_len) loop + 2 GPU tensor uploads per mini-batch.
+                let mut pos_flat = vec![0.0f32; batch_len * nc];
+                let mut neg_flat = vec![1.0f32; batch_len * nc];
+                for (i, &label) in y_batch.iter().enumerate() {
+                    pos_flat[i * nc + label] = 1.0;
+                    neg_flat[i * nc + label] = 0.0;
                 }
+                let pos_mask = Tensor::from_vec(pos_flat, (batch_len, nc), x.device())?;
+                let neg_mask = Tensor::from_vec(neg_flat, (batch_len, nc), x.device())?;
 
-                let loss = (total_loss / (batch_len as f64 * 2.0))?;
+                let pos_term = g.affine(-1.0, self.threshold)?;
+                let neg_term = g.affine(1.0, -self.threshold)?;
+
+                let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                    .log()?.broadcast_mul(&pos_mask)?.sum_all()?;
+                let neg_loss = ((neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                    .log()?.broadcast_mul(&neg_mask)?.sum_all()? * neg_scale)?;
+
+                let loss = ((pos_loss + neg_loss)? / (batch_len as f64 * 2.0))?;
                 self.opt.backward_step(&loss)?;
 
                 epoch_loss_sum += loss.to_vec0::<f32>()?;
@@ -114,33 +115,24 @@ impl FFMultiLayer {
             }
 
             if epoch % 10 == 0 || epoch == self.num_epochs - 1 {
-                let avg_loss = epoch_loss_sum / n_batches as f32;
                 log::info!(
                     "Layer {} - Epoch {} Loss: {:.4}",
-                    layer_idx,
-                    epoch,
-                    avg_loss
+                    layer_idx, epoch,
+                    epoch_loss_sum / n_batches as f32
                 );
             }
         }
-
         Ok(())
     }
 
     /// Per-action binary training for policy learning.
     ///
-    /// Unlike `train`, which uses a multi-class contrastive loss (one class wins,
-    /// all others lose), this method treats each action's output chunk as an
-    /// independent binary classifier:
-    ///   - action taken with positive advantage → push that chunk's goodness UP
-    ///   - action taken with negative advantage → push that chunk's goodness DOWN
-    ///   - all other chunks → NO update from this sample
+    /// Each action chunk is an independent binary classifier — positive advantage
+    /// pushes goodness above threshold, negative pushes it below. No other chunk is
+    /// touched for a given sample, eliminating winner-take-all cross-action suppression.
     ///
-    /// This eliminates the winner-take-all dynamic that the multi-class loss
-    /// produces: in the multi-class version, training action A as positive
-    /// simultaneously pushes down all other actions, causing one to dominate.
-    /// Here, each action's goodness evolves solely from the transitions where it
-    /// was actually taken, with no cross-action interference.
+    /// If `ent_coef > 0`, a Shannon entropy bonus is added (borrowed from RLGymPPO)
+    /// to keep the action distribution from collapsing even without recent negative updates.
     pub fn train_binary(
         &mut self,
         x: &Tensor,
@@ -150,6 +142,7 @@ impl FFMultiLayer {
     ) -> CandleResult<()> {
         let n_samples = actions.len();
         let mini_batch_size = 512.min(n_samples);
+        let nc = self.num_classes;
 
         for epoch in 0..self.num_epochs {
             let mut epoch_loss_sum = 0.0f32;
@@ -165,74 +158,74 @@ impl FFMultiLayer {
                 let advs = &advantages[offset..end];
 
                 let out = self.forward(&x_batch)?;
-                let chunks = out.chunk(self.num_classes, 1)?;
+                // (batch, nc) — all class goodnesses computed in one GPU op
+                let g = Self::goodness_all(&out, nc)?;
 
-                let mut total_loss = Tensor::zeros((), DType::F32, x.device())?;
-                let mut has_any = false;
-
-                for (c, chunk) in chunks.into_iter().enumerate() {
-                    let g = chunk.sqr()?.mean_keepdim(1)?;
-
-                    // Only mask positions where THIS action was taken.
-                    // Other positions contribute nothing to the loss for chunk c.
-                    let mut pos_mask_vec = vec![0.0f32; batch_len];
-                    let mut neg_mask_vec = vec![0.0f32; batch_len];
-                    for (i, (&act, &adv)) in acts.iter().zip(advs.iter()).enumerate() {
-                        if act == c {
-                            if adv > 0.0 {
-                                pos_mask_vec[i] = 1.0;
-                            } else {
-                                neg_mask_vec[i] = 1.0;
-                            }
-                        }
+                // Sparse masks: one nonzero entry per row at most (the taken action).
+                // Old: O(batch_len × nc) iterations + 2×nc tensor uploads per mini-batch.
+                // New: O(batch_len) iterations + 2 tensor uploads per mini-batch.
+                let mut pos_flat = vec![0.0f32; batch_len * nc];
+                let mut neg_flat = vec![0.0f32; batch_len * nc];
+                let mut has_binary = false;
+                for (i, (&act, &adv)) in acts.iter().zip(advs.iter()).enumerate() {
+                    if adv > 0.0 {
+                        pos_flat[i * nc + act] = 1.0;
+                        has_binary = true;
+                    } else if adv < 0.0 {
+                        neg_flat[i * nc + act] = 1.0;
+                        has_binary = true;
                     }
-
-                    if pos_mask_vec.iter().all(|&v| v == 0.0)
-                        && neg_mask_vec.iter().all(|&v| v == 0.0)
-                    {
-                        continue;
-                    }
-                    has_any = true;
-
-                    let pos_mask =
-                        Tensor::from_vec(pos_mask_vec, (batch_len, 1), x.device())?;
-                    let neg_mask =
-                        Tensor::from_vec(neg_mask_vec, (batch_len, 1), x.device())?;
-
-                    let pos_term = g.affine(-1.0, self.threshold)?;
-                    let neg_term = g.affine(1.0, -self.threshold)?;
-
-                    let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                        .log()?
-                        .broadcast_mul(&pos_mask)?;
-                    let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                        .log()?
-                        .broadcast_mul(&neg_mask)?;
-
-                    total_loss = (total_loss + pos_loss.sum_all()?)?;
-                    total_loss = (total_loss + neg_loss.sum_all()?)?;
                 }
 
-                if has_any {
-                    let loss = (total_loss / (batch_len as f64))?;
-                    self.opt.backward_step(&loss)?;
-                    epoch_loss_sum += loss.to_vec0::<f32>()?;
-                    n_batches += 1;
+                if !has_binary && self.ent_coef == 0.0 {
+                    offset = end;
+                    continue;
                 }
 
+                let pos_mask = Tensor::from_vec(pos_flat, (batch_len, nc), x.device())?;
+                let neg_mask = Tensor::from_vec(neg_flat, (batch_len, nc), x.device())?;
+
+                let pos_term = g.affine(-1.0, self.threshold)?;
+                let neg_term = g.affine(1.0, -self.threshold)?;
+
+                let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                    .log()?.broadcast_mul(&pos_mask)?.sum_all()?;
+                let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
+                    .log()?.broadcast_mul(&neg_mask)?.sum_all()?;
+
+                let main_loss = ((pos_loss + neg_loss)? / batch_len as f64)?;
+
+                let loss = if self.ent_coef > 0.0 {
+                    // Shannon entropy of softmax(g) per sample, averaged over batch.
+                    // Subtract from loss so the optimizer maximizes it (RLGymPPO pattern).
+                    // Mean-shift g for numerical stability before softmax.
+                    let mean_g = g.mean_keepdim(1)?;            // (batch, 1)
+                    let g_s = g.broadcast_sub(&mean_g)?;        // (batch, nc)
+                    let exp_g = g_s.exp()?;
+                    let exp_sum = exp_g.sum_keepdim(1)?;        // (batch, 1)
+                    let probs = exp_g.broadcast_div(&exp_sum)?; // (batch, nc)
+                    let log_probs = probs.clamp(1e-8f32, 1.0f32)?.log()?;
+                    let entropy = (probs.broadcast_mul(&log_probs)?
+                        .sum_keepdim(1)?.neg()?.sum_all()? / batch_len as f64)?;
+                    (main_loss - (entropy * self.ent_coef)?)?
+                } else {
+                    main_loss
+                };
+
+                self.opt.backward_step(&loss)?;
+                epoch_loss_sum += loss.to_vec0::<f32>()?;
+                n_batches += 1;
                 offset = end;
             }
 
             if (epoch % 10 == 0 || epoch == self.num_epochs - 1) && n_batches > 0 {
                 log::info!(
                     "Layer {} (binary) - Epoch {} Loss: {:.4}",
-                    layer_idx,
-                    epoch,
+                    layer_idx, epoch,
                     epoch_loss_sum / n_batches as f32
                 );
             }
         }
-
         Ok(())
     }
 }
@@ -280,7 +273,6 @@ impl FFMultiModel {
         for (idx, layer) in self.layers.iter_mut().enumerate() {
             layer.train(&h, y, idx)?;
 
-            // Project all data through this layer in mini-batches for the next layer
             let mut projected_chunks = Vec::new();
             let mut offset = 0;
             while offset < n_samples {
@@ -295,12 +287,6 @@ impl FFMultiModel {
         Ok(())
     }
 
-    /// Policy training using per-action binary classification.
-    ///
-    /// Each action's output chunk is trained independently as a binary classifier:
-    /// positive advantage → push goodness up, negative → push goodness down.
-    /// Chunks for actions not present in the batch are untouched, eliminating
-    /// the winner-take-all cross-action suppression of the standard multi-class loss.
     pub fn train_policy(
         &mut self,
         x: &Tensor,
@@ -328,6 +314,8 @@ impl FFMultiModel {
         Ok(())
     }
 
+    /// Inference: returns accumulated goodness scores `(batch, num_classes)`.
+    /// Vectorized: replaces per-class chunk() loop with a single reshape + mean op per layer.
     pub fn predict_scores(&self, inputs: &[Tensor]) -> CandleResult<Tensor> {
         if inputs.is_empty() {
             panic!("predict_scores called with empty inputs");
@@ -335,24 +323,18 @@ impl FFMultiModel {
 
         let batched_inputs = Tensor::cat(inputs, 0)?;
         let batch_size = batched_inputs.dim(0)?;
+        let nc = self.num_classes;
         let mut h = batched_inputs;
 
-        let mut total_goodnesses = Tensor::zeros(
-            (batch_size, self.num_classes),
-            DType::F32,
-            inputs[0].device(),
-        )?;
+        let mut total_goodnesses =
+            Tensor::zeros((batch_size, nc), DType::F32, inputs[0].device())?;
 
         for layer in &self.layers {
             h = layer.forward(&h)?;
-            let chunks = h.chunk(self.num_classes, 1)?;
-            let mut layer_goodnesses = Vec::new();
-            for chunk in chunks {
-                let g = chunk.sqr()?.mean_keepdim(1)?;
-                layer_goodnesses.push(g);
-            }
-            let layer_g_tensor = Tensor::cat(&layer_goodnesses, 1)?;
-            total_goodnesses = total_goodnesses.broadcast_add(&layer_g_tensor)?;
+            // (batch, nc*chunk) → (batch, nc, chunk) → mean² → (batch, nc)
+            let chunk_size = h.dim(1)? / nc;
+            let layer_g = h.reshape((batch_size, nc, chunk_size))?.sqr()?.mean(2usize)?;
+            total_goodnesses = (total_goodnesses + layer_g)?;
         }
 
         Ok(total_goodnesses)
@@ -363,50 +345,26 @@ impl FFMultiModel {
             return Ok(Vec::new());
         }
 
-        let batched_inputs = Tensor::cat(inputs, 0)?;
-        let batch_size = batched_inputs.dim(0)?;
-        let mut h = batched_inputs;
+        let scores = self.predict_scores(inputs)?; // (batch, nc)
+        let batch_size = scores.dim(0)?;
+        let nc = self.num_classes;
+        let flat: Vec<f32> = scores.flatten_all()?.to_vec1()?;
 
-        let mut total_goodnesses = Tensor::zeros(
-            (batch_size, self.num_classes),
-            DType::F32,
-            inputs[0].device(),
-        )?;
-
-        for layer in &self.layers {
-            h = layer.forward(&h)?;
-            let chunks = h.chunk(self.num_classes, 1)?;
-            let mut layer_goodnesses = Vec::new();
-            for chunk in chunks {
-                let g = chunk.sqr()?.mean_keepdim(1)?;
-                layer_goodnesses.push(g);
-            }
-            let layer_g_tensor = Tensor::cat(&layer_goodnesses, 1)?;
-            total_goodnesses = total_goodnesses.broadcast_add(&layer_g_tensor)?;
-        }
-
-        let best_scores_flat: Vec<f32> = total_goodnesses.flatten_all()?.to_vec1()?;
-        let mut best_indices = Vec::new();
-
+        let mut result = Vec::with_capacity(batch_size);
         for b in 0..batch_size {
-            let start = b * self.num_classes;
-            let end = start + self.num_classes;
-            let chunk = &best_scores_flat[start..end];
-            let (mut best_idx, mut max_score) = (0, f32::MIN);
-            for (i, &score) in chunk.iter().enumerate() {
-                if score > max_score {
-                    max_score = score;
-                    best_idx = i;
-                }
-            }
-            best_indices.push(best_idx);
+            let start = b * nc;
+            let chunk = &flat[start..start + nc];
+            let best_idx = chunk
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            result.push(best_idx);
         }
-
-        Ok(best_indices)
+        Ok(result)
     }
 
-    /// Save all layer weights to safetensors files inside `dir`.
-    /// Creates one file per layer: `layer_0.safetensors`, `layer_1.safetensors`, etc.
     pub fn save<P: AsRef<std::path::Path>>(&self, dir: P) -> CandleResult<()> {
         let dir = dir.as_ref();
         std::fs::create_dir_all(dir)
@@ -418,8 +376,6 @@ impl FFMultiModel {
         Ok(())
     }
 
-    /// Load all layer weights from safetensors files inside `dir`.
-    /// Expects the same number of files as there are layers.
     pub fn load<P: AsRef<std::path::Path>>(&mut self, dir: P) -> CandleResult<()> {
         let dir = dir.as_ref();
         for (i, vm) in self.varmaps.iter_mut().enumerate() {

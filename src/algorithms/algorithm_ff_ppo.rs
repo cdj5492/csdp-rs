@@ -12,8 +12,12 @@ use std::time::{Duration, Instant};
 
 const NUM_VALUE_CLASSES: usize = 50;
 const NUM_ENVS: usize = 16;
-const ROLLOUT_STEPS: usize = 256;
-const PPO_EPOCHS: usize = 4;
+const ROLLOUT_STEPS: usize = 512;
+const PPO_EPOCHS: usize = 2;
+// Entropy coefficient applied to each policy layer's train_binary call (RLGymPPO pattern).
+// Maximizing action-distribution entropy prevents collapse without requiring
+// explicit exploration noise.
+const POLICY_ENT_COEF: f64 = 0.005;
 const GAMMA: f32 = 0.99;
 const GAE_LAMBDA: f32 = 0.95;
 const AUTO_SAVE_INTERVAL: usize = 25;
@@ -185,11 +189,17 @@ impl AlgorithmFFPPO {
             value_dims.push(h.div_ceil(NUM_VALUE_CLASSES) * NUM_VALUE_CLASSES);
         }
 
-        // 1 internal epoch per train() call; PPO outer loop provides the
-        // equivalent of multiple gradient steps.
-        let policy_model = FFMultiModel::new(&policy_dims, action_size, &device, 1)?;
+        // 1 internal epoch per train() call; PPO outer loop provides multiple passes.
+        let mut policy_model = FFMultiModel::new(&policy_dims, action_size, &device, 1)?;
         let policy_model_old = FFMultiModel::new(&policy_dims, action_size, &device, 1)?;
         let value_model = FFMultiModel::new(&value_dims, NUM_VALUE_CLASSES, &device, 1)?;
+
+        // Apply entropy coefficient to every policy layer so train_binary maximizes
+        // action-distribution entropy alongside the advantage-based binary loss.
+        for layer in &mut policy_model.layers {
+            layer.ent_coef = POLICY_ENT_COEF;
+        }
+
         sync_model(&policy_model, &policy_model_old)?;
 
         Ok(Self {
