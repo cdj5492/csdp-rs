@@ -211,6 +211,50 @@ for each episode:
 
 ---
 
+### CSDP_PPO -- PPO with CSDP Spiking Q-Function
+
+**Model**: CSDPMultiModel (CSDP, LIF, multi-class output groups)  
+**Network input**: `[normalized_state | one_hot(action) * 3.0]`  
+**Network output**: Softmax distribution over 50 return classes  
+**Environments**: 8 parallel  
+**Episodes**: 1000, Steps/episode: 64, PPO epochs/rollout: 2
+
+CSDP_PPO applies the PPO training loop to a CSDP spiking network used as a distributional Q-function. A single `CSDPMultiModel` maps (state, action) pairs to a distribution over 50 discretized return bins, giving Q(s, a) ≈ E[G | s, a]. Action selection is argmax over E[Q(s, a)] — the expected return under the class distribution — with an epsilon-greedy warmup that decays to zero, producing committed non-jittery behavior. Generalized Advantage Estimation (GAE, lambda=0.95, gamma=0.99) computes return targets. Each transition's GAE return target is converted to a class label and used to train the Q-function via CSDP's contrastive STDP rule. Unlike CSDP5, there is no replay buffer: data is strictly on-policy and replaced each episode. Return class boundaries adapt via EMA over observed return percentiles. Checkpoints save to `checkpoints/csdp_ppo/` and training can be resumed with `--resume`.
+
+```
+n_classes = 50
+class_bounds = initial_percentile_bounds()
+epsilon = 0.3  # decays to 0 over 200 episodes
+
+model = CSDPMultiModel(input=state_size + action_size, classes=50)
+
+for each episode:
+    collect rollout: run 8 envs for 64 steps each
+        for each env, action selection:
+            for each action a:
+                class_logits = model_forward([state | one_hot(a) * 3.0])
+                expected_return[a] = sum(softmax(class_logits) * class_centers)
+            action = epsilon_greedy(argmax(expected_return))
+
+    bootstrap V(s_T) = max_a E[Q(s_T, a)] for each env
+
+    compute GAE advantages A_t and return targets R_t (gamma=0.99, lambda=0.95):
+        delta_t = r_t + gamma * V_{t+1} - V_t
+        A_t = sum_{k>=t} (gamma * lambda)^{k-t} * delta_k
+        R_t = A_t + V_t
+
+    normalize advantages (mean=0, std=1)
+    update class_bounds via EMA on observed returns R_t
+
+    for each PPO epoch (2 epochs):
+        shuffle transitions
+        for each (state, action, R_t):
+            target_class = digitize(R_t, class_bounds)
+            model_train([state | one_hot(action) * 3.0], label=target_class)
+```
+
+---
+
 ### FF1 -- State/Action Iterator
 
 **Model**: FFModel (Forward-Forward)  
@@ -503,7 +547,7 @@ cargo run --release [-- [OPTIONS]]
 | `--rocketsim` | Use the RocketSim environment (Rocket League simulator). |
 | `--visualize` / `-v` | Enable the Ratatui TUI with live training graphs and layer activity. Spike history panels are only populated for CSDP algorithms. |
 | `--infinite-epochs` | Run until interrupted (sets episode count to `usize::MAX`). |
-| `--resume` | Load from checkpoint and resume training. Supported by `ff_multi2`, `ff_ppo`, and `csdp5`. |
+| `--resume` | Load from checkpoint and resume training. Supported by `ff_multi2`, `ff_ppo`, `csdp5`, and `csdp_ppo`. |
 
 If no environment flag is given, the binary attempts to connect to a physical LeRobot arm over serial. If that connection fails, it falls back to the Grid environment automatically.
 
@@ -516,6 +560,7 @@ If no environment flag is given, the binary attempts to connect to a physical Le
 | `csdp3` | SNN actor-critic |
 | `csdp4` | Vectorized SNN with replay buffer |
 | `csdp5` | Multi-class Monte Carlo SNN |
+| `csdp_ppo` | PPO with CSDP spiking Q-function |
 | `ff1` | FF state/action evaluator |
 | `ff2` | FF transition evaluator with goal state |
 | `ff3` | FF probabilistic rank trajectory |

@@ -14,6 +14,27 @@ const RLVISER_PORT: u16 = 45243;
 #[allow(dead_code)]
 const ROCKETSIM_PORT: u16 = 34254;
 
+// CommonValues from RLGymSim_CPP/Utils/CommonValues.h
+const CAR_MAX_SPEED: f32 = 2300.0;
+const BALL_MAX_SPEED: f32 = 6000.0;
+const BALL_RADIUS: f32 = 92.75;
+const BACK_WALL_Y: f32 = 5120.0;
+const BACK_NET_Y: f32 = 6000.0;
+const GOAL_HEIGHT: f32 = 642.775;
+// Goal back positions used by VelocityBallToGoalReward and AlignBallGoalReward
+const ORANGE_GOAL_BACK: (f32, f32, f32) = (0.0, BACK_NET_Y, GOAL_HEIGHT / 2.0);
+const BLUE_GOAL_BACK: (f32, f32, f32) = (0.0, -BACK_NET_Y, GOAL_HEIGHT / 2.0);
+const GOAL_WIDTH: f32 = 1786.0;
+
+// Reward scaling from main_training.cpp CombinedReward
+// multiplier = 100, tick_skip = 8 (C++ value used for weight normalization),
+// match_timeout_secs = 25 => match_timeout_ticks = 25 * 120 / 8 = 375
+const REWARD_MULTIPLIER: f32 = 100.0;
+const MATCH_TIMEOUT_TICKS: f32 = 375.0;
+
+// Approximate distance threshold for ball touch detection (ball radius + car hitbox half-diagonal)
+const TOUCH_DIST_THRESHOLD: f32 = 200.0;
+
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 #[allow(dead_code)]
@@ -42,8 +63,7 @@ pub struct RocketSimEnvironment {
     socket: UdpSocket,
     rlviser_addr: SocketAddr,
     tick_skip: i32,
-    prev_dist_to_ball: f32,
-    prev_dist_ball_to_net: f32,
+    first_touch_given: bool,
     builder: RefCell<planus::Builder>,
     id: usize,
 }
@@ -83,8 +103,7 @@ impl RocketSimEnvironment {
             socket,
             rlviser_addr,
             tick_skip,
-            prev_dist_to_ball: 0.0,
-            prev_dist_ball_to_net: 0.0,
+            first_touch_given: false,
             builder: RefCell::new(planus::Builder::new()),
             id,
         };
@@ -260,60 +279,154 @@ impl Environment for RocketSimEnvironment {
     fn evaluate_action(&self, _state: &[f64], action_idx: usize) -> f64 {
         let mut arena = self.arena.borrow_mut();
 
-        // Save current state
+        // Save current state so we can restore after speculative step
         let original_state = arena.pin_mut().get_game_state();
         let controls = self.lookup_table[action_idx];
-
-        // Ensure we properly unwrap Result to handle errors though evaluate_action returns no error,
-        // we'll just ignore if set_car_controls fails here
         let _ = arena.pin_mut().set_car_controls(self.car_id, controls);
 
-        let initial_car = arena.pin_mut().get_car(self.car_id);
+        // Capture pre-step ball velocity for HitBallHardReward
         let initial_ball = arena.pin_mut().get_ball();
-        let initial_dist_to_ball = ((initial_car.pos.x - initial_ball.pos.x).powi(2)
-            + (initial_car.pos.y - initial_ball.pos.y).powi(2)
-            + (initial_car.pos.z - initial_ball.pos.z).powi(2))
-        .sqrt();
+        let pre_ball_vel = (initial_ball.vel.x, initial_ball.vel.y, initial_ball.vel.z);
 
-        let goal_pos = rocketsim_rs::math::Vec3::new(0.0, 5120.0, 0.0);
-        let initial_dist_ball_to_net = ((initial_ball.pos.x - goal_pos.x).powi(2)
-            + (initial_ball.pos.y - goal_pos.y).powi(2)
-            + (initial_ball.pos.z - goal_pos.z).powi(2))
-        .sqrt();
-
-        // Step simulation
+        // Advance simulation
         arena.pin_mut().step(self.tick_skip as u32);
 
-        // Get new state to calculate reward
+        // Read post-step state
         let new_car = arena.pin_mut().get_car(self.car_id);
         let new_ball = arena.pin_mut().get_ball();
 
-        let new_dist_to_ball = ((new_car.pos.x - new_ball.pos.x).powi(2)
-            + (new_car.pos.y - new_ball.pos.y).powi(2)
-            + (new_car.pos.z - new_ball.pos.z).powi(2))
-        .sqrt();
+        let car_pos = (new_car.pos.x, new_car.pos.y, new_car.pos.z);
+        let car_vel = (new_car.vel.x, new_car.vel.y, new_car.vel.z);
+        let car_fwd = (
+            new_car.rot_mat.forward.x,
+            new_car.rot_mat.forward.y,
+            new_car.rot_mat.forward.z,
+        );
+        let ball_pos = (new_ball.pos.x, new_ball.pos.y, new_ball.pos.z);
+        let ball_vel = (new_ball.vel.x, new_ball.vel.y, new_ball.vel.z);
+        // boost is stored as 0-100 in RocketSim; convert to fraction for reward
+        let boost_frac = (new_car.boost / 100.0).clamp(0.0, 1.0);
 
-        let new_dist_ball_to_net = ((new_ball.pos.x - goal_pos.x).powi(2)
-            + (new_ball.pos.y - goal_pos.y).powi(2)
-            + (new_ball.pos.z - goal_pos.z).powi(2))
-        .sqrt();
+        let dist_to_ball = v3_len(v3_sub(car_pos, ball_pos));
+        let ball_touched = dist_to_ball < TOUCH_DIST_THRESHOLD;
 
-        // Calculate reward
-        // Reward for moving closer to the ball
-        let ball_dist_reward = initial_dist_to_ball - new_dist_to_ball;
+        let mut reward = 0.0f32;
 
-        // Reward for moving ball closer to net
-        let net_dist_reward = initial_dist_ball_to_net - new_dist_ball_to_net;
+        // --- VelocityBallToGoalReward × 0.64 * M / mtt ---
+        // Reward ball velocity component toward the orange goal (Blue team attacks Orange).
+        {
+            let dir = v3_norm(v3_sub(ORANGE_GOAL_BACK, ball_pos));
+            let ball_vel_norm = v3_scale(ball_vel, 1.0 / BALL_MAX_SPEED);
+            reward +=
+                v3_dot(dir, ball_vel_norm) * 0.64 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
 
-        // Touch reward: if distance to ball is less than ~200 units (ball radius 92.75, car bbox is around 118x84x36)
-        let touch_reward = if new_dist_to_ball < 200.0 { 10.0 } else { 0.0 };
+        // --- VelocityPlayerToBallReward × 0.64 * M / mtt ---
+        // Reward car velocity component toward the ball.
+        {
+            let dir = v3_norm(v3_sub(ball_pos, car_pos));
+            let car_vel_norm = v3_scale(car_vel, 1.0 / CAR_MAX_SPEED);
+            reward +=
+                v3_dot(dir, car_vel_norm) * 0.64 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
 
-        let total_reward = ball_dist_reward + (net_dist_reward * 2.0) + touch_reward;
+        // --- AirReward × 0.05 * M / mtt ---
+        // Reward being airborne.
+        {
+            let r = if new_car.is_on_ground { 0.0 } else { 1.0 };
+            reward += r * 0.05 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
+
+        // --- FaceBallReward × 0.32 * M / mtt ---
+        // Reward car forward vector alignment with direction to ball.
+        {
+            let dir = v3_norm(v3_sub(ball_pos, car_pos));
+            reward += v3_dot(car_fwd, dir) * 0.32 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
+
+        // --- TouchBallReward(aerial_weight=2) × 0.25 * M ---
+        // Reward touching the ball; higher reward for aerial touches.
+        if ball_touched {
+            let height_ratio = (new_ball.pos.z + BALL_RADIUS) / (BALL_RADIUS * 2.0);
+            reward += height_ratio.powi(2) * 0.25 * REWARD_MULTIPLIER;
+        }
+
+        // --- ConserveBoostReward × 0.8 * M / mtt ---
+        // Reward having boost available (sqrt of fraction).
+        {
+            reward += boost_frac.sqrt() * 0.8 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
+
+        // --- HitBallHardReward × 0.1 * M ---
+        // Reward large ball velocity changes on touch (hard hits).
+        if ball_touched {
+            let vel_change = v3_len(v3_sub(ball_vel, pre_ball_vel)) / BALL_MAX_SPEED;
+            reward += vel_change * 0.1 * REWARD_MULTIPLIER;
+        }
+
+        // --- AlignBallGoalReward(defense=1, offense=1) × 0.2 * M / mtt ---
+        // Reward positioning where: (a) ball is between car and orange goal (offensive alignment),
+        // and (b) car is between ball and blue goal (defensive alignment).
+        {
+            // defensive: (ball - car) aligned with (car - blue_goal_back)
+            let def = v3_dot(
+                v3_norm(v3_sub(ball_pos, car_pos)),
+                v3_norm(v3_sub(car_pos, BLUE_GOAL_BACK)),
+            );
+            // offensive: (ball - car) aligned with (orange_goal_back - car)
+            let off = v3_dot(
+                v3_norm(v3_sub(ball_pos, car_pos)),
+                v3_norm(v3_sub(ORANGE_GOAL_BACK, car_pos)),
+            );
+            reward += (def + off) * 0.2 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
+
+        // --- DribbleReward × 0.5 * M / mtt ---
+        // Reward when ball is directly above car (dribble position).
+        if ball_touched {
+            let rel_x = ball_pos.0 - car_pos.0;
+            let rel_y = ball_pos.1 - car_pos.1;
+            let horiz_dist = (rel_x * rel_x + rel_y * rel_y).sqrt();
+            if horiz_dist < BALL_RADIUS && ball_pos.2 > car_pos.2 {
+                reward += 0.5 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+            }
+        }
+
+        // --- HitPostPenalty × 0.1 * M / mtt (penalty, applied negative) ---
+        // Penalize ball being wide of the posts near the orange back wall (post hit).
+        {
+            if ball_pos.0.abs() > GOAL_WIDTH / 2.0
+                && ball_pos.1 > BACK_WALL_Y - 2.0 * BALL_RADIUS
+            {
+                reward -= 0.1 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+            }
+        }
+
+        // --- FirstTouchReward × 0.3 * M ---
+        // One-time reward for making first ball contact after a kickoff.
+        if !self.first_touch_given && ball_touched {
+            reward += 0.3 * REWARD_MULTIPLIER;
+        }
+
+        // --- MaximizeTimeBetweenFlipsReward × 0.2 * M / mtt ---
+        // Reward keeping forward vector pointed upward while a flip is available
+        // (has_jumped && !has_double_jumped && !has_flipped => flip still available).
+        if new_car.has_jumped && !new_car.has_double_jumped && !new_car.has_flipped {
+            // forward.dot((0, 0, 1)) is just the Z component of the forward vector
+            reward += car_fwd.2 * 0.2 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
+
+        // --- VelocityReward × 0.35 * M / mtt ---
+        // Reward car speed as a fraction of max speed.
+        {
+            let speed = v3_len(car_vel) / CAR_MAX_SPEED;
+            reward += speed * 0.35 * REWARD_MULTIPLIER / MATCH_TIMEOUT_TICKS;
+        }
 
         // Restore original state
         let _ = arena.pin_mut().set_game_state(&original_state);
 
-        total_reward as f64
+        reward as f64
     }
 
     fn apply_action(&mut self, action_idx: usize) -> Result<(), Box<dyn Error>> {
@@ -321,22 +434,19 @@ impl Environment for RocketSimEnvironment {
         let mut arena = self.arena.borrow_mut();
 
         arena.pin_mut().set_car_controls(self.car_id, controls)?;
-
-        let car = arena.pin_mut().get_car(self.car_id);
-        let ball = arena.pin_mut().get_ball();
-
-        self.prev_dist_to_ball = ((car.pos.x - ball.pos.x).powi(2)
-            + (car.pos.y - ball.pos.y).powi(2)
-            + (car.pos.z - ball.pos.z).powi(2))
-        .sqrt();
-
-        let goal_pos = rocketsim_rs::math::Vec3::new(0.0, 5120.0, 0.0);
-        self.prev_dist_ball_to_net = ((ball.pos.x - goal_pos.x).powi(2)
-            + (ball.pos.y - goal_pos.y).powi(2)
-            + (ball.pos.z - goal_pos.z).powi(2))
-        .sqrt();
-
         arena.pin_mut().step(self.tick_skip as u32);
+
+        // Track first ball touch for FirstTouchReward
+        if !self.first_touch_given {
+            let car = arena.pin_mut().get_car(self.car_id);
+            let ball = arena.pin_mut().get_ball();
+            let dx = car.pos.x - ball.pos.x;
+            let dy = car.pos.y - ball.pos.y;
+            let dz = car.pos.z - ball.pos.z;
+            if (dx * dx + dy * dy + dz * dz).sqrt() < TOUCH_DIST_THRESHOLD {
+                self.first_touch_given = true;
+            }
+        }
 
         // Required to drop borrow before sending state
         drop(arena);
@@ -350,6 +460,7 @@ impl Environment for RocketSimEnvironment {
             let mut arena = self.arena.borrow_mut();
             arena.pin_mut().reset_to_random_kickoff(None);
         }
+        self.first_touch_given = false;
         self.send_state_to_rlviser();
         Ok(())
     }
@@ -363,6 +474,35 @@ impl Drop for RocketSimEnvironment {
         }
     }
 }
+
+// --- Vec3 helpers (tuples of f32) ---
+
+fn v3_dot(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
+    a.0 * b.0 + a.1 * b.1 + a.2 * b.2
+}
+
+fn v3_sub(a: (f32, f32, f32), b: (f32, f32, f32)) -> (f32, f32, f32) {
+    (a.0 - b.0, a.1 - b.1, a.2 - b.2)
+}
+
+fn v3_scale(a: (f32, f32, f32), s: f32) -> (f32, f32, f32) {
+    (a.0 * s, a.1 * s, a.2 * s)
+}
+
+fn v3_len(a: (f32, f32, f32)) -> f32 {
+    (a.0 * a.0 + a.1 * a.1 + a.2 * a.2).sqrt()
+}
+
+fn v3_norm(a: (f32, f32, f32)) -> (f32, f32, f32) {
+    let len = v3_len(a);
+    if len < 1e-8 {
+        (0.0, 0.0, 0.0)
+    } else {
+        v3_scale(a, 1.0 / len)
+    }
+}
+
+// --- RLViser serialization (unchanged) ---
 
 fn to_flat_vec3(v: rocketsim_rs::math::Vec3) -> flat_rs::Vec3 {
     flat_rs::Vec3 {

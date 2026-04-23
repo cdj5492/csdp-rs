@@ -3,6 +3,7 @@ pub mod algorithm_csdp2;
 pub mod algorithm_csdp3;
 pub mod algorithm_csdp4;
 pub mod algorithm_csdp5;
+pub mod algorithm_csdp_ppo;
 pub mod algorithm_ff1;
 pub mod algorithm_ff2;
 pub mod algorithm_ff3;

@@ -1,6 +1,7 @@
+#![allow(clippy::needless_range_loop)]
 use super::Algorithm;
 use crate::environment::Environment;
-use crate::models::ff_multi_model::FFMultiModel;
+use crate::models::csdp_multi_model::CSDPMultiModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
 use rand::Rng;
@@ -10,35 +11,28 @@ use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+// Direct translation of ff_ppo constants. CSDP SNN training is more expensive
+// per sample (40 timesteps per forward), so TRAIN_BATCH_SIZE caps mini-batch
+// size inside the PPO update loops to avoid OOM on large rollouts.
 const NUM_VALUE_CLASSES: usize = 50;
 const NUM_ENVS: usize = 16;
 const ROLLOUT_STEPS: usize = 512;
 const PPO_EPOCHS: usize = 2;
-// Entropy coefficient applied to each policy layer's train_binary call (RLGymPPO pattern).
-// Kept low so the policy can concentrate on its best actions after learning;
-// the epsilon-greedy warmup provides early exploration instead.
-const POLICY_ENT_COEF: f64 = 0.001;
+const TRAIN_BATCH_SIZE: usize = 256;
 const GAMMA: f32 = 0.99;
 const GAE_LAMBDA: f32 = 0.95;
 const AUTO_SAVE_INTERVAL: usize = 25;
-const CHECKPOINT_DIR: &str = "checkpoints/ff_ppo";
+const CHECKPOINT_DIR: &str = "checkpoints/csdp_ppo";
 const BOUNDS_EMA_ALPHA: f32 = 0.1;
 const MIN_RETURN_RANGE: f32 = 2.0;
 const BOUNDS_LOW_PERCENTILE: f32 = 0.05;
 const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
-// Epsilon-greedy exploration schedule. Epsilon decays to 0 so that once the
-// policy has learned, action selection is pure argmax — committed, non-jittery.
 const EPSILON_START: f32 = 0.3;
 const EPSILON_END: f32 = 0.0;
 const EPSILON_DECAY_EPISODES: f32 = 200.0;
-// Clamp applied to z-scored goodness before softmax. Must be large enough that
-// the z-scores of reinforced actions are NOT truncated, otherwise goodness
-// differences between similar-quality actions collapse to zero and all appear
-// equally probable. With typical FF goodness spreads and 96 actions, reinforced
-// action z-scores land around 4–5, so the clamp must be larger than that.
-// A value of 6.0 lets the policy express graded preferences among its best
-// actions while still bounding extreme single-action dominance.
 const GOODNESS_CLAMP: f32 = 6.0;
+
+// ── Exact copies of ff_ppo helper functions ──────────────────────────────────
 
 #[derive(Serialize, Deserialize)]
 struct TrainingState {
@@ -104,13 +98,6 @@ fn softmax_probs(goodness: &[f32]) -> Vec<f32> {
     exps.iter().map(|&e| e / exp_sum).collect()
 }
 
-/// Converts raw goodness scores to a policy probability distribution.
-///
-/// Raw goodness scores grow without bound as the FF contrastive loss trains,
-/// which collapses a plain softmax to 100% on one action within a few episodes.
-/// This function z-scores the goodness values and clamps them to ±GOODNESS_CLAMP
-/// before softmax so the policy can never fully collapse regardless of how large
-/// the underlying goodness magnitudes become.
 fn goodness_to_probs(goodness: &[f32]) -> Vec<f32> {
     let n = goodness.len();
     if n == 0 {
@@ -126,40 +113,43 @@ fn goodness_to_probs(goodness: &[f32]) -> Vec<f32> {
     softmax_probs(&normalized)
 }
 
-fn sync_model(src: &FFMultiModel, dst: &FFMultiModel) -> Result<(), Box<dyn Error>> {
-    for (src_vm, dst_vm) in src.varmaps.iter().zip(dst.varmaps.iter()) {
-        let src_data = src_vm.data().lock().unwrap();
-        let dst_data = dst_vm.data().lock().unwrap();
-        for (key, src_var) in src_data.iter() {
-            if let Some(dst_var) = dst_data.get(key) {
-                let t: &Tensor = src_var;
-                dst_var.set(&t.detach())?;
-            }
-        }
-    }
-    Ok(())
-}
-
+// Same normalization logic as ff_ppo, but clamped to [0, 1] because CSDP's
+// BernoulliLayer interprets inputs as spike probabilities.
 fn normalize_state(raw: &[f64]) -> Vec<f32> {
     if raw.len() == 31 {
         let scales: [f32; 31] = [
-            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0, 6.0, 6.0, 6.0, 4096.0, 5120.0, 2048.0,
-            2300.0, 2300.0, 2300.0, 5.5, 5.5, 5.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0, 6.0, 6.0, 6.0,
+            4096.0, 5120.0, 2048.0, 2300.0, 2300.0, 2300.0, 5.5, 5.5, 5.5,
+            1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             100.0, 1.0, 1.0, 1.0,
         ];
         raw.iter()
             .zip(scales.iter())
-            .map(|(&v, &s)| (v as f32) / s)
+            .map(|(&v, &s)| ((v as f32 / s) * 0.5 + 0.5).clamp(0.0, 1.0))
             .collect()
     } else {
-        raw.iter().map(|&x| (x as f32) / 50.0).collect()
+        raw.iter().map(|&x| ((x as f32) / 50.0 * 0.5 + 0.5).clamp(0.0, 1.0)).collect()
     }
 }
 
-pub struct AlgorithmFFPPO {
-    pub policy_model: FFMultiModel,
-    pub policy_model_old: FFMultiModel,
-    pub value_model: FFMultiModel,
+// ── Struct ───────────────────────────────────────────────────────────────────
+
+/// Direct CSDP translation of AlgorithmFFPPO.
+///
+/// Policy model:  input=state, num_classes=action_size → goodness per action.
+/// Value model:   input=state, num_classes=NUM_VALUE_CLASSES → goodness per return bin.
+///
+/// Inference is identical to ff_ppo: predict_scores → goodness_to_probs → argmax.
+/// Value estimation: expected_value_from_goodness over 50 return classes.
+///
+/// Policy training replaces train_binary with a CSDP equivalent:
+///   • adv > 0 → label = taken_action   (push that action's neuron group up)
+///   • adv < 0 → label = random_other_action (push taken_action's group down indirectly)
+/// Value training uses CSDP train with return-class labels, identical in intent
+/// to ff_ppo's value_model.train().
+pub struct AlgorithmCSDPPPO {
+    pub policy_model: CSDPMultiModel,
+    pub value_model: CSDPMultiModel,
     pub n_episodes: usize,
     pub device: Device,
     pub num_actions: usize,
@@ -170,47 +160,52 @@ pub struct AlgorithmFFPPO {
     pub start_episode: usize,
 }
 
-impl AlgorithmFFPPO {
+impl AlgorithmCSDPPPO {
     pub fn new(
         state_size: usize,
         action_size: usize,
         device: Device,
+        dt: f32,
     ) -> Result<Self, Box<dyn Error>> {
-        // Policy dims: choose neurons-per-class based on action space size,
-        // then round each hidden size up to a multiple of action_size so the
-        // FFMultiLayer chunk invariant is satisfied.
+        let timesteps = 40;
+
+        // Mirror ff_ppo's sizing: neurons_per_class × action_size, rounded to
+        // multiples of action_size so the class-chunk invariant holds.
         let neurons_per_class = if action_size > 20 { 32usize } else { 64 };
         let base = neurons_per_class * action_size;
-        let policy_hidden = [base * 2, base, base / 2];
-        let mut policy_dims = vec![state_size];
-        for &h in &policy_hidden {
-            policy_dims.push(h.div_ceil(action_size) * action_size);
-        }
+        let policy_hidden: Vec<usize> = [base * 2, base, base / 2]
+            .iter()
+            .map(|&h| h.div_ceil(action_size) * action_size)
+            .collect();
 
-        // Value dims: same rounding logic for NUM_VALUE_CLASSES.
-        let mut value_dims = vec![state_size];
-        for &h in &[512usize, 256, 128] {
-            value_dims.push(h.div_ceil(NUM_VALUE_CLASSES) * NUM_VALUE_CLASSES);
-        }
+        // Value sizing mirrors ff_ppo's [512, 256, 128] rounded to NUM_VALUE_CLASSES.
+        let value_hidden: Vec<usize> = [512usize, 256, 128]
+            .iter()
+            .map(|&h| h.div_ceil(NUM_VALUE_CLASSES) * NUM_VALUE_CLASSES)
+            .collect();
 
-        // 1 internal epoch per train() call; PPO outer loop provides multiple passes.
-        let mut policy_model = FFMultiModel::new(&policy_dims, action_size, &device, 1)?;
-        let policy_model_old = FFMultiModel::new(&policy_dims, action_size, &device, 1)?;
-        let value_model = FFMultiModel::new(&value_dims, NUM_VALUE_CLASSES, &device, 1)?;
+        let policy_model = CSDPMultiModel::new(
+            state_size,
+            &policy_hidden,
+            action_size,
+            &device,
+            dt,
+            timesteps,
+        )?;
 
-        // Apply entropy coefficient to every policy layer so train_binary maximizes
-        // action-distribution entropy alongside the advantage-based binary loss.
-        for layer in &mut policy_model.layers {
-            layer.ent_coef = POLICY_ENT_COEF;
-        }
-
-        sync_model(&policy_model, &policy_model_old)?;
+        let value_model = CSDPMultiModel::new(
+            state_size,
+            &value_hidden,
+            NUM_VALUE_CLASSES,
+            &device,
+            dt,
+            timesteps,
+        )?;
 
         Ok(Self {
             policy_model,
-            policy_model_old,
             value_model,
-            n_episodes: 500,
+            n_episodes: 1000,
             device,
             num_actions: action_size,
             num_value_classes: NUM_VALUE_CLASSES,
@@ -228,8 +223,8 @@ impl AlgorithmFFPPO {
         epoch_rewards: &[(usize, f32)],
     ) -> Result<(), Box<dyn Error>> {
         std::fs::create_dir_all(dir)?;
-        self.policy_model.save(dir.join("policy_model"))?;
-        self.value_model.save(dir.join("value_model"))?;
+        self.policy_model.save(dir.join("policy_model.safetensors"))?;
+        self.value_model.save(dir.join("value_model.safetensors"))?;
         let state = TrainingState {
             min_return: self.min_return,
             max_return: self.max_return,
@@ -255,9 +250,8 @@ impl AlgorithmFFPPO {
         &mut self,
         dir: &std::path::Path,
     ) -> Result<Vec<(usize, f32)>, Box<dyn Error>> {
-        self.policy_model.load(dir.join("policy_model"))?;
-        self.value_model.load(dir.join("value_model"))?;
-        sync_model(&self.policy_model, &self.policy_model_old)?;
+        self.policy_model.load(dir.join("policy_model.safetensors"))?;
+        self.value_model.load(dir.join("value_model.safetensors"))?;
         let json = std::fs::read_to_string(dir.join("training_state.json"))?;
         let state: TrainingState = serde_json::from_str(&json)?;
         self.min_return = state.min_return;
@@ -275,7 +269,7 @@ impl AlgorithmFFPPO {
     }
 }
 
-impl Algorithm for AlgorithmFFPPO {
+impl Algorithm for AlgorithmCSDPPPO {
     fn run(
         &mut self,
         env: &mut dyn Environment,
@@ -322,7 +316,6 @@ impl Algorithm for AlgorithmFFPPO {
             // ═══════════════════════════════════════════════════
             // Phase 1: Rollout Collection
             // ═══════════════════════════════════════════════════
-            // Per-transition storage indexed as [step * NUM_ENVS + env_idx].
             let n_total = ROLLOUT_STEPS * NUM_ENVS;
             let mut all_states: Vec<Vec<f32>> = Vec::with_capacity(n_total);
             let mut all_actions: Vec<usize> = Vec::with_capacity(n_total);
@@ -333,19 +326,23 @@ impl Algorithm for AlgorithmFFPPO {
 
             let inference_start = Instant::now();
 
+            self.policy_model.disable_learning();
+            self.value_model.disable_learning();
+
             for _step in 0..ROLLOUT_STEPS {
-                // Collect raw states, then build a batched tensor once.
                 let mut raw_states: Vec<Vec<f64>> = Vec::with_capacity(NUM_ENVS);
                 for e in envs.iter_mut() {
                     raw_states.push(e.get_state()?);
                 }
 
+                // Batch all envs into one tensor (NUM_ENVS, state_size).
                 let mut flat = Vec::with_capacity(NUM_ENVS * state_size);
                 for raw in &raw_states {
                     flat.extend(normalize_state(raw));
                 }
                 let state_tensor = Tensor::from_vec(flat, (NUM_ENVS, state_size), &self.device)?;
 
+                // Identical to ff_ppo: two batched predict_scores calls.
                 let policy_scores = self.policy_model.predict_scores(&[state_tensor.clone()])?;
                 let value_scores = self.value_model.predict_scores(&[state_tensor])?;
 
@@ -360,20 +357,12 @@ impl Algorithm for AlgorithmFFPPO {
                 for env_idx in 0..NUM_ENVS {
                     let pol_start = env_idx * action_size;
                     let goodness = &policy_flat[pol_start..pol_start + action_size];
-                    // Use normalize+clamp softmax so the distribution cannot collapse
-                    // to 100% on one action regardless of raw goodness magnitude.
                     let probs = goodness_to_probs(goodness);
 
                     let selected_action = if rng.r#gen::<f32>() < epsilon {
-                        // Random exploration during the warmup phase.
                         rng.gen_range(0..action_size)
                     } else {
-                        // Argmax: commit to the highest-goodness action.
-                        // Stochastic sampling from a near-uniform distribution causes
-                        // visible jitter — the agent cycles through equally-scored actions
-                        // every step. Argmax gives smooth, decisive behavior once learned.
-                        probs
-                            .iter()
+                        probs.iter()
                             .enumerate()
                             .max_by(|(_, a), (_, b)| {
                                 a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
@@ -403,7 +392,6 @@ impl Algorithm for AlgorithmFFPPO {
                     all_old_probs.push(probs[selected_action].max(1e-8));
                 }
 
-                // Visualization hooks (env 0 only).
                 if let Some(ref vs) = vis_state {
                     if let Ok(mut vis) = vs.try_lock() {
                         if vis.runtime_stats.epoch != episode {
@@ -478,7 +466,6 @@ impl Algorithm for AlgorithmFFPPO {
                 })
                 .collect();
 
-            // GAE per env, then flatten into all_advantages / all_return_targets.
             let mut all_advantages = vec![0.0f32; n_total];
             let mut all_return_targets = vec![0.0f32; n_total];
 
@@ -495,7 +482,6 @@ impl Algorithm for AlgorithmFFPPO {
                 }
             }
 
-            // Normalize advantages.
             let adv_mean: f32 = all_advantages.iter().sum::<f32>() / n_total as f32;
             let adv_var: f32 = all_advantages
                 .iter()
@@ -539,72 +525,123 @@ impl Algorithm for AlgorithmFFPPO {
             // ═══════════════════════════════════════════════════
             // Phase 4: PPO Update Epochs
             // ═══════════════════════════════════════════════════
+            self.policy_model.enable_learning();
+            self.value_model.enable_learning();
+
             let mut indices: Vec<usize> = (0..n_total).collect();
+            let record_layer_id = vis_state
+                .as_ref()
+                .and_then(|vs| vs.try_lock().ok().and_then(|s| s.selected_layer_id));
 
             for ppo_epoch in 0..PPO_EPOCHS {
                 indices.shuffle(&mut rng);
 
                 // ── Value Update ──
+                // Identical intent to ff_ppo: map return targets to class labels,
+                // train value model to predict the return class for each state.
                 {
-                    let value_labels: Vec<usize> = indices
-                        .iter()
-                        .map(|&i| {
-                            value_to_class(
+                    let mut offset = 0;
+                    while offset < n_total {
+                        let end = (offset + TRAIN_BATCH_SIZE).min(n_total);
+                        let batch_len = end - offset;
+
+                        let mut flat_states = Vec::with_capacity(batch_len * state_size);
+                        let mut class_labels = Vec::with_capacity(batch_len);
+                        for &i in &indices[offset..end] {
+                            flat_states.extend_from_slice(&all_states[i]);
+                            class_labels.push(value_to_class(
                                 all_return_targets[i],
                                 self.min_return,
                                 self.max_return,
                                 self.num_value_classes,
-                            )
-                        })
-                        .collect();
-                    let mut flat_states = Vec::with_capacity(n_total * state_size);
-                    for &i in &indices {
-                        flat_states.extend_from_slice(&all_states[i]);
+                            ) as f32);
+                        }
+                        let x = Tensor::from_vec(
+                            flat_states,
+                            (batch_len, state_size),
+                            &self.device,
+                        )?;
+                        let y = Tensor::from_vec(class_labels, (1, batch_len), &self.device)?;
+                        self.value_model.train(&x, &y, None)?;
+                        offset = end;
                     }
-                    let states_tensor =
-                        Tensor::from_vec(flat_states, (n_total, state_size), &self.device)?;
-                    self.value_model.train(&states_tensor, &value_labels)?;
                 }
 
-                // ── Policy Update (per-action binary classification) ──
-                // Uses train_policy rather than train. Each action chunk is trained
-                // independently as a binary classifier: positive advantage → push
-                // goodness up, negative → push goodness down. No other chunks are
-                // touched by a given sample, so there is no cross-action suppression
-                // and no winner-take-all collapse.
-                // Both positive and negative advantage transitions are included;
-                // the sign of the advantage determines the push direction.
+                // ── Policy Update ──
+                // CSDP translation of ff_ppo's train_binary:
+                //   adv > 0 → label = taken_action   (MultiClassModSignal strengthens that group)
+                //   adv < 0 → label = random_other   (taken_action's group weakened by contrast)
+                // Processed in mini-batches so the SNN doesn't OOM on n_total samples.
                 {
-                    let mut flat_states = Vec::with_capacity(n_total * state_size);
-                    let mut batch_actions: Vec<usize> = Vec::with_capacity(n_total);
-                    let mut batch_advantages: Vec<f32> = Vec::with_capacity(n_total);
+                    // Pre-sample "other" actions for negative transitions.
+                    let neg_actions: Vec<usize> = indices
+                        .iter()
+                        .map(|&i| {
+                            let a = all_actions[i];
+                            if action_size > 1 {
+                                let mut other = rng.gen_range(0..action_size - 1);
+                                if other >= a {
+                                    other += 1;
+                                }
+                                other
+                            } else {
+                                0
+                            }
+                        })
+                        .collect();
 
-                    for &i in &indices {
-                        flat_states.extend_from_slice(&all_states[i]);
-                        batch_actions.push(all_actions[i]);
-                        batch_advantages.push(all_advantages[i]);
+                    let mut offset = 0;
+                    while offset < n_total {
+                        let end = (offset + TRAIN_BATCH_SIZE).min(n_total);
+                        let batch_len = end - offset;
+
+                        let mut flat_states = Vec::with_capacity(batch_len * state_size);
+                        let mut class_labels = Vec::with_capacity(batch_len);
+                        let mut has_any = false;
+
+                        for (batch_pos, &i) in indices[offset..end].iter().enumerate() {
+                            let adv = all_advantages[i];
+                            if adv.abs() < 1e-6 {
+                                // Zero advantage — skip; don't pollute with a meaningless label.
+                                // We still need to emit a row so the tensor stays rectangular,
+                                // so we duplicate the last label (won't matter if we skip below).
+                                flat_states.extend_from_slice(&all_states[i]);
+                                class_labels.push(all_actions[i] as f32);
+                                continue;
+                            }
+                            has_any = true;
+                            flat_states.extend_from_slice(&all_states[i]);
+                            let label = if adv > 0.0 {
+                                all_actions[i] as f32
+                            } else {
+                                neg_actions[offset + batch_pos] as f32
+                            };
+                            class_labels.push(label);
+                        }
+
+                        if !has_any {
+                            offset = end;
+                            continue;
+                        }
+
+                        let x = Tensor::from_vec(
+                            flat_states,
+                            (batch_len, state_size),
+                            &self.device,
+                        )?;
+                        let y = Tensor::from_vec(class_labels, (1, batch_len), &self.device)?;
+                        self.policy_model.train(&x, &y, record_layer_id)?;
+                        offset = end;
                     }
 
-                    let states_tensor =
-                        Tensor::from_vec(flat_states, (n_total, state_size), &self.device)?;
-                    self.policy_model.train_policy(
-                        &states_tensor,
-                        &batch_actions,
-                        &batch_advantages,
-                    )?;
                     total_training_calls += 1;
-
                     log::info!(
-                        "Ep {} PPO epoch {}: policy binary update on {} transitions",
-                        episode,
-                        ppo_epoch,
-                        n_total
+                        "Ep {} PPO epoch {}: policy + value update on {} transitions",
+                        episode, ppo_epoch, n_total
                     );
                 }
             }
 
-            // Sync old policy snapshot for the next episode's ratio computation.
-            sync_model(&self.policy_model, &self.policy_model_old)?;
             total_training_time += training_start.elapsed();
 
             // ── Record episode reward ──
@@ -615,6 +652,10 @@ impl Algorithm for AlgorithmFFPPO {
                 state.epoch_rewards.push((episode, avg_reward));
                 state.runtime_stats.epoch = episode;
                 state.total_epochs = episode_end;
+
+                if let Ok(snapshot) = self.policy_model.get_visualization_snapshot() {
+                    state.update_from_snapshot(snapshot);
+                }
             }
 
             // ── Manual save / load via visualization UI ──
