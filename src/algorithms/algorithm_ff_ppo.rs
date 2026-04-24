@@ -45,9 +45,9 @@ const EPSILON_DECAY_EPISODES: f32 = 200.0;
 const TEMP_START: f32 = 1.0;
 const TEMP_END: f32 = 0.1;
 const TEMP_DECAY_EPISODES: f32 = 500.0;
-const LR_START: f64 = 0.005;
-const LR_END: f64 = 0.00009;
-const LR_DECAY_EPISODES: f64 = 400.0;
+const LR_START: f64 = 0.0009;
+const LR_END: f64 = 0.00001;
+const LR_DECAY_EPISODES: f64 = 500.0;
 // Clamp applied to z-scored goodness before softmax. Increased to 20.0
 // to allow the policy to be highly decisive (sharp) at low temperatures
 // without multiple actions hitting a 'flat' ceiling.
@@ -332,8 +332,7 @@ impl Algorithm for AlgorithmFFPPO {
             }
 
             let lr = LR_END
-                + (LR_START - LR_END)
-                    * (1.0 - (episode as f64 / LR_DECAY_EPISODES).min(1.0));
+                + (LR_START - LR_END) * (1.0 - (episode as f64 / LR_DECAY_EPISODES).min(1.0));
             self.policy_model.set_learning_rate(lr);
             self.value_model.set_learning_rate(lr);
 

@@ -334,12 +334,16 @@ impl NeuralNetworkVisualizerApp {
                     self.draw_model_probs(f, env_chunks[1], &state);
                 }
                 2 => {
-                    let side_chunks = Layout::default()
-                        .direction(Direction::Horizontal)
-                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                        .split(chunks[2]);
-                    self.draw_rewards(f, side_chunks[0], &state);
-                    self.draw_raster(f, side_chunks[1], &state.model_structure);
+                    if state.model_structure.layers.is_empty() {
+                        self.draw_rewards(f, chunks[2], &state);
+                    } else {
+                        let side_chunks = Layout::default()
+                            .direction(Direction::Horizontal)
+                            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                            .split(chunks[2]);
+                        self.draw_rewards(f, side_chunks[0], &state);
+                        self.draw_raster(f, side_chunks[1], &state.model_structure);
+                    }
                 }
                 _ => {}
             }
