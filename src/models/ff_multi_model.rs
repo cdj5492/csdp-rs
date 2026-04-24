@@ -255,6 +255,9 @@ impl FFMultiLayer {
         }
         Ok(())
     }
+    pub fn set_learning_rate(&mut self, lr: f64) {
+        self.opt.set_learning_rate(lr);
+    }
 }
 
 pub struct FFMultiModel {
@@ -419,5 +422,11 @@ impl FFMultiModel {
             }
         }
         Ok(())
+    }
+
+    pub fn set_learning_rate(&mut self, lr: f64) {
+        for layer in self.layers.iter_mut() {
+            layer.set_learning_rate(lr);
+        }
     }
 }
