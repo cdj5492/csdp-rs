@@ -4,6 +4,7 @@ use crate::models::ff_multi_model::FFMultiModel;
 use crate::visualization::VisualizationState;
 use candle_core::{Device, Tensor};
 use rand::Rng;
+use rand::distributions::{Distribution, WeightedIndex};
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -11,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const NUM_VALUE_CLASSES: usize = 50;
-const NUM_ENVS: usize = 16;
+const NUM_ENVS: usize = 32;
 const ROLLOUT_STEPS: usize = 512;
 const PPO_EPOCHS: usize = 2;
 // Entropy coefficient applied to each policy layer's train_binary call (RLGymPPO pattern).
@@ -29,16 +30,28 @@ const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
 // Epsilon-greedy exploration schedule. Epsilon decays to 0 so that once the
 // policy has learned, action selection is pure argmax — committed, non-jittery.
 const EPSILON_START: f32 = 0.3;
-const EPSILON_END: f32 = 0.0;
+// Non-zero floor so the agent retains a small chance of taking a random action
+// after the warmup. With EPSILON_END = 0.0 the agent can permanently lock into
+// a local cycle: the value function correctly learns V(closer) > V(further) by a
+// tiny margin under the current cycling policy, but the policy never discovers
+// that breaking the cycle leads to high returns because it never tries. Even a
+// 5% random-action rate gives ~25 random actions per env per 512-step rollout,
+// enough for the agent to occasionally escape the cycle, reach the goal, and
+// propagate the high return back through the value and policy updates.
+const EPSILON_END: f32 = 0.05;
 const EPSILON_DECAY_EPISODES: f32 = 200.0;
-// Clamp applied to z-scored goodness before softmax. Must be large enough that
-// the z-scores of reinforced actions are NOT truncated, otherwise goodness
-// differences between similar-quality actions collapse to zero and all appear
-// equally probable. With typical FF goodness spreads and 96 actions, reinforced
-// action z-scores land around 4–5, so the clamp must be larger than that.
-// A value of 6.0 lets the policy express graded preferences among its best
-// actions while still bounding extreme single-action dominance.
-const GOODNESS_CLAMP: f32 = 6.0;
+// Temperature schedule for stochastic action selection.
+// Higher temperature → flatter distribution (more exploration).
+// Lower temperature → sharper distribution (more exploitation).
+// Decays to TEMP_END so the agent eventually commits to its best actions
+// but retains enough stochasticity to avoid deterministic cycles.
+const TEMP_START: f32 = 1.0;
+const TEMP_END: f32 = 0.1;
+const TEMP_DECAY_EPISODES: f32 = 500.0;
+// Clamp applied to z-scored goodness before softmax. Increased to 20.0
+// to allow the policy to be highly decisive (sharp) at low temperatures
+// without multiple actions hitting a 'flat' ceiling.
+const GOODNESS_CLAMP: f32 = 20.0;
 
 #[derive(Serialize, Deserialize)]
 struct TrainingState {
@@ -108,10 +121,11 @@ fn softmax_probs(goodness: &[f32]) -> Vec<f32> {
 ///
 /// Raw goodness scores grow without bound as the FF contrastive loss trains,
 /// which collapses a plain softmax to 100% on one action within a few episodes.
-/// This function z-scores the goodness values and clamps them to ±GOODNESS_CLAMP
-/// before softmax so the policy can never fully collapse regardless of how large
-/// the underlying goodness magnitudes become.
-fn goodness_to_probs(goodness: &[f32]) -> Vec<f32> {
+/// This function z-scores the goodness values and scales by 1/temperature before
+/// softmax so the policy can never fully collapse regardless of how large
+/// the underlying goodness magnitudes become, while allowing the distribution
+/// to sharpen over time as temperature decays.
+fn goodness_to_probs(goodness: &[f32], temperature: f32) -> Vec<f32> {
     let n = goodness.len();
     if n == 0 {
         return Vec::new();
@@ -121,7 +135,13 @@ fn goodness_to_probs(goodness: &[f32]) -> Vec<f32> {
     let std = var.sqrt().max(1e-6);
     let normalized: Vec<f32> = goodness
         .iter()
-        .map(|&g| ((g - mean) / std).clamp(-GOODNESS_CLAMP, GOODNESS_CLAMP))
+        .map(|&g| {
+            // Clamp the raw z-score to a wide range, then scale by temperature.
+            // This ensures that even at low temperatures, the 'best' action
+            // can be significantly more probable than the 'second best',
+            // avoiding the flat-topped distribution issue.
+            ((g - mean) / std).clamp(-GOODNESS_CLAMP, GOODNESS_CLAMP) / temperature
+        })
         .collect();
     softmax_probs(&normalized)
 }
@@ -168,6 +188,8 @@ pub struct AlgorithmFFPPO {
     pub max_return: f32,
     pub bounds_initialized: bool,
     pub start_episode: usize,
+    /// Per-action average normalized advantage from the most recently completed rollout
+    pub last_adv_chart: Vec<f32>,
 }
 
 impl AlgorithmFFPPO {
@@ -218,6 +240,7 @@ impl AlgorithmFFPPO {
             max_return: 0.0,
             bounds_initialized: false,
             start_episode: 0,
+            last_adv_chart: vec![1.0 / action_size as f32; action_size],
         })
     }
 
@@ -357,29 +380,29 @@ impl Algorithm for AlgorithmFFPPO {
                     + (EPSILON_START - EPSILON_END)
                         * (1.0 - (episode as f32 / EPSILON_DECAY_EPISODES).min(1.0));
 
+                let temperature = TEMP_END
+                    + (TEMP_START - TEMP_END)
+                        * (1.0 - (episode as f32 / TEMP_DECAY_EPISODES).min(1.0));
+
                 for env_idx in 0..NUM_ENVS {
                     let pol_start = env_idx * action_size;
                     let goodness = &policy_flat[pol_start..pol_start + action_size];
-                    // Use normalize+clamp softmax so the distribution cannot collapse
-                    // to 100% on one action regardless of raw goodness magnitude.
-                    let probs = goodness_to_probs(goodness);
+                    // Use normalize+clamp softmax with temperature so the distribution
+                    // sharpens over time but remains stochastic.
+                    let probs = goodness_to_probs(goodness, temperature);
 
                     let selected_action = if rng.r#gen::<f32>() < epsilon {
                         // Random exploration during the warmup phase.
                         rng.gen_range(0..action_size)
                     } else {
-                        // Argmax: commit to the highest-goodness action.
-                        // Stochastic sampling from a near-uniform distribution causes
-                        // visible jitter — the agent cycles through equally-scored actions
-                        // every step. Argmax gives smooth, decisive behavior once learned.
-                        probs
-                            .iter()
-                            .enumerate()
-                            .max_by(|(_, a), (_, b)| {
-                                a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)
-                            })
-                            .map(|(i, _)| i)
-                            .unwrap_or(0)
+                        // Stochastic sampling from the temperature-scaled distribution.
+                        // Higher temperature early on encourages exploration;
+                        // lower temperature later concentrates on high-goodness actions
+                        // while still allowing the agent to break cycles.
+                        let dist = WeightedIndex::new(&probs).unwrap_or_else(|_| {
+                            WeightedIndex::new(&vec![1.0; action_size]).unwrap()
+                        });
+                        dist.sample(&mut rng)
                     };
 
                     let val_start = env_idx * self.num_value_classes;
@@ -418,7 +441,8 @@ impl Algorithm for AlgorithmFFPPO {
                         }
                         vis.environment_state = Some(env0_state.clone());
 
-                        let pol_probs = goodness_to_probs(&policy_flat[0..action_size]);
+                        let pol_probs =
+                            goodness_to_probs(&policy_flat[0..action_size], temperature);
                         let val_goodness = &value_flat[0..self.num_value_classes];
                         let val_probs = softmax_probs(val_goodness);
                         let v_scalar = expected_value_from_goodness(
@@ -428,8 +452,12 @@ impl Algorithm for AlgorithmFFPPO {
                             self.num_value_classes,
                         );
                         vis.model_probabilities = Some(vec![
-                            ("Policy π(a|s)".to_string(), pol_probs),
+                            (format!("Policy π(a|s) [T={:.2}]", temperature), pol_probs),
                             (format!("Value P(v|s)  E[V]={:.3}", v_scalar), val_probs),
+                            (
+                                "Avg Advantage/Action (prev ep, shifted→[0,1])".to_string(),
+                                self.last_adv_chart.clone(),
+                            ),
                         ]);
                     }
 
@@ -505,6 +533,32 @@ impl Algorithm for AlgorithmFFPPO {
             let adv_std = adv_var.sqrt().max(1e-8);
             for a in all_advantages.iter_mut() {
                 *a = (*a - adv_mean) / adv_std;
+            }
+
+            // Compute per-action average normalized advantage for visualization.
+            // Shifted to [0,1] by subtracting the min so the bar chart can display
+            // it. This shows which actions the algorithm pushed up vs. down this
+            // episode — near-equal bars on two actions signals the cycling pattern.
+            {
+                let mut adv_sum = vec![0.0f32; action_size];
+                let mut adv_cnt = vec![0usize; action_size];
+                for i in 0..n_total {
+                    adv_sum[all_actions[i]] += all_advantages[i];
+                    adv_cnt[all_actions[i]] += 1;
+                }
+                let avg: Vec<f32> = (0..action_size)
+                    .map(|a| {
+                        if adv_cnt[a] > 0 {
+                            adv_sum[a] / adv_cnt[a] as f32
+                        } else {
+                            0.0
+                        }
+                    })
+                    .collect();
+                let min_a = avg.iter().cloned().fold(f32::INFINITY, f32::min);
+                let max_a = avg.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                let range = (max_a - min_a).max(1e-6);
+                self.last_adv_chart = avg.iter().map(|&v| (v - min_a) / range).collect();
             }
 
             // ═══════════════════════════════════════════════════

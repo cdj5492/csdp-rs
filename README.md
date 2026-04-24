@@ -1,4 +1,4 @@
-# custom_framework
+# CSDP-RS
 
 An experimental research playground for biologically-motivated reinforcement learning algorithms that do not use backpropagation. The framework implements and compares two families of local learning models -- Forward-Forward networks and Contrastive Signal Dependent Plasticity spiking networks -- across a variety of RL algorithm designs, from simple contrastive action evaluators up through actor-critic and PPO-style approaches.
 

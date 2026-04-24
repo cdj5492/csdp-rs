@@ -33,7 +33,9 @@ impl FFMultiLayer {
         let linear = linear(in_features, out_features, vb.pp("linear"))?;
 
         let params = ParamsAdamW {
-            lr: 0.004,
+            lr: 0.00009,
+            // lr: 0.0002,
+            // lr: 0.005,
             ..Default::default()
         };
         let opt = AdamW::new(varmap.all_vars(), params)?;
@@ -102,9 +104,14 @@ impl FFMultiLayer {
                 let neg_term = g.affine(1.0, -self.threshold)?;
 
                 let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                    .log()?.broadcast_mul(&pos_mask)?.sum_all()?;
+                    .log()?
+                    .broadcast_mul(&pos_mask)?
+                    .sum_all()?;
                 let neg_loss = ((neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                    .log()?.broadcast_mul(&neg_mask)?.sum_all()? * neg_scale)?;
+                    .log()?
+                    .broadcast_mul(&neg_mask)?
+                    .sum_all()?
+                    * neg_scale)?;
 
                 let loss = ((pos_loss + neg_loss)? / (batch_len as f64 * 2.0))?;
                 self.opt.backward_step(&loss)?;
@@ -117,7 +124,8 @@ impl FFMultiLayer {
             if epoch % 10 == 0 || epoch == self.num_epochs - 1 {
                 log::info!(
                     "Layer {} - Epoch {} Loss: {:.4}",
-                    layer_idx, epoch,
+                    layer_idx,
+                    epoch,
                     epoch_loss_sum / n_batches as f32
                 );
             }
@@ -161,23 +169,30 @@ impl FFMultiLayer {
                 // (batch, nc) — all class goodnesses computed in one GPU op
                 let g = Self::goodness_all(&out, nc)?;
 
-                // Sparse masks: one nonzero entry per row at most (the taken action).
-                // Old: O(batch_len × nc) iterations + 2×nc tensor uploads per mini-batch.
-                // New: O(batch_len) iterations + 2 tensor uploads per mini-batch.
+                // Advantage-weighted sparse masks. Each entry holds |advantage| rather
+                // than 1.0 so that the loss — and therefore the gradient — scales with
+                // how informative each transition is. A transition with normalized
+                // advantage 0.003 (e.g. cycling near the goal) contributes ~1000× less
+                // than one with advantage 3.0 (clear progress or clear mistake). This
+                // matches standard PPO where gradient ∝ advantage, preventing near-zero
+                // advantage transitions from generating contradictory noise that prevents
+                // convergence at states where the value difference is tiny.
+                // Clamped to 5.0 so outlier advantages don't dominate the batch.
                 let mut pos_flat = vec![0.0f32; batch_len * nc];
                 let mut neg_flat = vec![0.0f32; batch_len * nc];
-                let mut has_binary = false;
+                let mut weight_sum = 0.0f32;
                 for (i, (&act, &adv)) in acts.iter().zip(advs.iter()).enumerate() {
+                    let w = adv.abs().min(5.0);
                     if adv > 0.0 {
-                        pos_flat[i * nc + act] = 1.0;
-                        has_binary = true;
+                        pos_flat[i * nc + act] = w;
+                        weight_sum += w;
                     } else if adv < 0.0 {
-                        neg_flat[i * nc + act] = 1.0;
-                        has_binary = true;
+                        neg_flat[i * nc + act] = w;
+                        weight_sum += w;
                     }
                 }
 
-                if !has_binary && self.ent_coef == 0.0 {
+                if weight_sum == 0.0 && self.ent_coef == 0.0 {
                     offset = end;
                     continue;
                 }
@@ -189,24 +204,35 @@ impl FFMultiLayer {
                 let neg_term = g.affine(1.0, -self.threshold)?;
 
                 let pos_loss = (pos_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                    .log()?.broadcast_mul(&pos_mask)?.sum_all()?;
+                    .log()?
+                    .broadcast_mul(&pos_mask)?
+                    .sum_all()?;
                 let neg_loss = (neg_term.clamp(-50.0f32, 50.0f32)?.exp()? + 1.0)?
-                    .log()?.broadcast_mul(&neg_mask)?.sum_all()?;
+                    .log()?
+                    .broadcast_mul(&neg_mask)?
+                    .sum_all()?;
 
-                let main_loss = ((pos_loss + neg_loss)? / batch_len as f64)?;
+                // Normalise by effective weight sum so the loss magnitude stays
+                // comparable to the binary version regardless of advantage scale.
+                let norm = (weight_sum as f64).max(1.0);
+                let main_loss = ((pos_loss + neg_loss)? / norm)?;
 
                 let loss = if self.ent_coef > 0.0 {
                     // Shannon entropy of softmax(g) per sample, averaged over batch.
                     // Subtract from loss so the optimizer maximizes it (RLGymPPO pattern).
-                    // Mean-shift g for numerical stability before softmax.
-                    let mean_g = g.mean_keepdim(1)?;            // (batch, 1)
-                    let g_s = g.broadcast_sub(&mean_g)?;        // (batch, nc)
+                    // Max-shift g for numerical stability before softmax to prevent exp() overflow.
+                    let max_g = g.max_keepdim(1)?; // (batch, 1)
+                    let g_s = g.broadcast_sub(&max_g)?; // (batch, nc)
                     let exp_g = g_s.exp()?;
-                    let exp_sum = exp_g.sum_keepdim(1)?;        // (batch, 1)
+                    let exp_sum = exp_g.sum_keepdim(1)?; // (batch, 1)
                     let probs = exp_g.broadcast_div(&exp_sum)?; // (batch, nc)
                     let log_probs = probs.clamp(1e-8f32, 1.0f32)?.log()?;
-                    let entropy = (probs.broadcast_mul(&log_probs)?
-                        .sum_keepdim(1)?.neg()?.sum_all()? / batch_len as f64)?;
+                    let entropy = (probs
+                        .broadcast_mul(&log_probs)?
+                        .sum_keepdim(1)?
+                        .neg()?
+                        .sum_all()?
+                        / batch_len as f64)?;
                     (main_loss - (entropy * self.ent_coef)?)?
                 } else {
                     main_loss
@@ -221,7 +247,8 @@ impl FFMultiLayer {
             if (epoch % 10 == 0 || epoch == self.num_epochs - 1) && n_batches > 0 {
                 log::info!(
                     "Layer {} (binary) - Epoch {} Loss: {:.4}",
-                    layer_idx, epoch,
+                    layer_idx,
+                    epoch,
                     epoch_loss_sum / n_batches as f32
                 );
             }
@@ -326,14 +353,16 @@ impl FFMultiModel {
         let nc = self.num_classes;
         let mut h = batched_inputs;
 
-        let mut total_goodnesses =
-            Tensor::zeros((batch_size, nc), DType::F32, inputs[0].device())?;
+        let mut total_goodnesses = Tensor::zeros((batch_size, nc), DType::F32, inputs[0].device())?;
 
         for layer in &self.layers {
             h = layer.forward(&h)?;
             // (batch, nc*chunk) → (batch, nc, chunk) → mean² → (batch, nc)
             let chunk_size = h.dim(1)? / nc;
-            let layer_g = h.reshape((batch_size, nc, chunk_size))?.sqr()?.mean(2usize)?;
+            let layer_g = h
+                .reshape((batch_size, nc, chunk_size))?
+                .sqr()?
+                .mean(2usize)?;
             total_goodnesses = (total_goodnesses + layer_g)?;
         }
 
