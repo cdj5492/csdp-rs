@@ -28,8 +28,8 @@ const MIN_RETURN_RANGE: f32 = 2.0;
 const BOUNDS_LOW_PERCENTILE: f32 = 0.05;
 const BOUNDS_HIGH_PERCENTILE: f32 = 0.95;
 // Epsilon-greedy exploration schedule. Epsilon decays to 0 so that once the
-// policy has learned, action selection is pure argmax — committed, non-jittery.
-const EPSILON_START: f32 = 0.3;
+// policy has learned, action selection is nearly pure argmax — committed, non-jittery.
+const EPSILON_START: f32 = 0.1;
 // Non-zero floor so the agent retains a small chance of taking a random action
 // after the warmup. With EPSILON_END = 0.0 the agent can permanently lock into
 // a local cycle: the value function correctly learns V(closer) > V(further) by a
@@ -161,11 +161,12 @@ fn sync_model(src: &FFMultiModel, dst: &FFMultiModel) -> Result<(), Box<dyn Erro
 }
 
 fn normalize_state(raw: &[f64]) -> Vec<f32> {
-    if raw.len() == 31 {
-        let scales: [f32; 31] = [
+    if raw.len() == 37 {
+        let scales: [f32; 37] = [
             4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0, 6.0, 6.0, 6.0, 4096.0, 5120.0, 2048.0,
             2300.0, 2300.0, 2300.0, 5.5, 5.5, 5.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             100.0, 1.0, 1.0, 1.0,
+            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0,
         ];
         raw.iter()
             .zip(scales.iter())
@@ -190,6 +191,7 @@ pub struct AlgorithmFFPPO {
     pub start_episode: usize,
     /// Per-action average normalized advantage from the most recently completed rollout
     pub last_adv_chart: Vec<f32>,
+    pub local_rewards: Vec<(usize, f32)>,
 }
 
 impl AlgorithmFFPPO {
@@ -241,6 +243,7 @@ impl AlgorithmFFPPO {
             bounds_initialized: false,
             start_episode: 0,
             last_adv_chart: vec![1.0 / action_size as f32; action_size],
+            local_rewards: Vec::new(),
         })
     }
 
@@ -264,6 +267,14 @@ impl AlgorithmFFPPO {
             dir.join("training_state.json"),
             serde_json::to_string(&state)?,
         )?;
+
+        // Also save as CSV for easier access
+        let mut csv = String::from("epoch,reward\n");
+        for (ep, r) in epoch_rewards {
+            csv.push_str(&format!("{},{}\n", ep, r));
+        }
+        std::fs::write(dir.join("epoch_rewards.csv"), csv)?;
+
         log::info!(
             "Checkpoint saved to {:?} (episode {}, return range [{:.4}, {:.4}])",
             dir,
@@ -669,23 +680,19 @@ impl Algorithm for AlgorithmFFPPO {
 
             // ── Record episode reward ──
             let avg_reward = raw_total_reward / n_total as f32;
+            self.local_rewards.push((episode, avg_reward));
+
             if let Some(ref vs) = vis_state
                 && let Ok(mut state) = vs.try_lock()
             {
                 state.epoch_rewards.push((episode, avg_reward));
                 state.runtime_stats.epoch = episode;
                 state.total_epochs = episode_end;
-            }
 
-            // ── Manual save / load via visualization UI ──
-            if let Some(ref vs) = vis_state
-                && let Ok(mut state) = vs.try_lock()
-            {
                 if state.save_requested {
-                    let epoch_rewards = state.epoch_rewards.clone();
                     state.save_requested = false;
                     drop(state);
-                    if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards) {
+                    if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &self.local_rewards) {
                         log::error!("Manual save failed: {}", e);
                     }
                 } else if state.load_requested {
@@ -693,6 +700,7 @@ impl Algorithm for AlgorithmFFPPO {
                     drop(state);
                     match self.load_checkpoint(checkpoint_dir) {
                         Ok(epoch_rewards) => {
+                            self.local_rewards = epoch_rewards.clone();
                             if let Some(ref vs2) = vis_state
                                 && let Ok(mut s) = vs2.try_lock()
                             {
@@ -709,11 +717,7 @@ impl Algorithm for AlgorithmFFPPO {
 
             // ── Periodic auto-save ──
             if episode.is_multiple_of(AUTO_SAVE_INTERVAL) {
-                let epoch_rewards = vis_state
-                    .as_ref()
-                    .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
-                    .unwrap_or_default();
-                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards) {
+                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &self.local_rewards) {
                     log::error!("Auto-save failed at episode {}: {}", episode, e);
                 }
             }
@@ -744,17 +748,13 @@ impl Algorithm for AlgorithmFFPPO {
 
         // Final checkpoint.
         log::info!("Training completed. Saving final checkpoint...");
-        let epoch_rewards = vis_state
-            .as_ref()
-            .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
-            .unwrap_or_default();
-        if let Err(e) = self.save_checkpoint(checkpoint_dir, episode_end, &epoch_rewards) {
+        if let Err(e) = self.save_checkpoint(checkpoint_dir, episode - 1, &self.local_rewards) {
             log::error!("Final save failed: {}", e);
         }
         if let Some(ref vs) = vis_state
             && let Ok(state) = vs.try_lock()
         {
-            let csv_path = std::path::Path::new(CHECKPOINT_DIR).join("epoch_rewards.csv");
+            let csv_path = std::path::Path::new(checkpoint_dir).join("epoch_rewards.csv");
             let _ = state.save_graphs_to_csv(&csv_path);
         }
         Ok(())

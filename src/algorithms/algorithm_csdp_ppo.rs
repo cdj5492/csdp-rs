@@ -116,12 +116,13 @@ fn goodness_to_probs(goodness: &[f32]) -> Vec<f32> {
 // Same normalization logic as ff_ppo, but clamped to [0, 1] because CSDP's
 // BernoulliLayer interprets inputs as spike probabilities.
 fn normalize_state(raw: &[f64]) -> Vec<f32> {
-    if raw.len() == 31 {
-        let scales: [f32; 31] = [
+    if raw.len() == 37 {
+        let scales: [f32; 37] = [
             4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0, 6.0, 6.0, 6.0,
             4096.0, 5120.0, 2048.0, 2300.0, 2300.0, 2300.0, 5.5, 5.5, 5.5,
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             100.0, 1.0, 1.0, 1.0,
+            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0,
         ];
         raw.iter()
             .zip(scales.iter())

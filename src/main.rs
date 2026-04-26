@@ -48,7 +48,7 @@ impl log::Log for VisLogger {
 }
 static LOGGER: VisLogger = VisLogger;
 
-fn parse_args() -> (bool, String, String, bool, bool) {
+fn parse_args() -> (bool, String, String, bool, bool, Option<usize>) {
     let args: Vec<String> = std::env::args().collect();
     let visualize = args.contains(&"--visualize".to_string()) || args.contains(&"-v".to_string());
 
@@ -68,14 +68,22 @@ fn parse_args() -> (bool, String, String, bool, bool) {
             algo = args[idx + 1].clone();
         }
 
-    (visualize, env_type, algo, infinite_epochs, resume)
+    let mut n_episodes = None;
+    if let Some(idx) = args.iter().position(|r| r == "--n-episodes")
+        && idx + 1 < args.len() {
+            if let Ok(n) = args[idx + 1].parse::<usize>() {
+                n_episodes = Some(n);
+            }
+        }
+
+    (visualize, env_type, algo, infinite_epochs, resume, n_episodes)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     // let device = Device::Cpu;
     let device = Device::new_cuda(0)?;
 
-    let (visualize, env_type, algo_choice, infinite_epochs, resume) = parse_args();
+    let (visualize, env_type, algo_choice, infinite_epochs, resume, n_episodes_override) = parse_args();
 
     if visualize {
         let _ = log::set_logger(&LOGGER);
@@ -120,12 +128,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut algo1_opt = None;
     let mut algo2_opt = None;
     let mut algo3_opt = None;
-    let mut algo4_opt = None;
-    let mut algo5_opt = None;
+    let mut algo4_opt: Option<(Algorithm4, Option<Vec<(usize, f32)>>)> = None;
+    let mut algo5_opt: Option<(AlgorithmCSDP5, Option<Vec<(usize, f32)>>)> = None;
     let mut algo_ff1_opt = None;
     let mut algo_ff2_opt = None;
     let mut algo_ff3_opt = None;
-    let mut algo_ff4_opt = None;
+    let mut algo_ff4_opt: Option<(AlgorithmFF4, Option<Vec<(usize, f32)>>)> = None;
     let mut algo_ffsac_opt = None;
     let mut algo_ff_multi1_opt = None;
     let mut algo_ff_multi2_opt = None;
@@ -143,7 +151,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             state_bounds,
         )
         .expect("Failed to create Algorithm1");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = algo.model.get_visualization_snapshot();
@@ -163,7 +173,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             state_bounds,
         )
         .expect("Failed to create Algorithm2");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = algo.model.get_visualization_snapshot();
@@ -183,7 +195,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             state_bounds.clone(),
         )
         .expect("Failed to create Algorithm3");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = algo.model.actor.get_visualization_snapshot();
@@ -197,20 +211,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut algo = Algorithm4::new(
             state_size,
             action_size,
-            vec![256, 128],
+            vec![64],
             dt,
             device.clone(),
             state_bounds.clone(),
         )
         .expect("Failed to create Algorithm4");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
+        }
+        let mut restored_rewards = None;
+        if resume {
+            let cp_dir = std::path::Path::new("checkpoints/csdp4");
+            if cp_dir.join("epoch_rewards.csv").exists() {
+                // Algorithm4 only saves CSV for now in my quick fix
+                // but let's be consistent. Actually csdp4 didn't have load_checkpoint.
+                // I will skip resume logic for csdp4 and just run it fresh.
+            }
         }
         let snap = algo.model.get_visualization_snapshot();
         let eps = algo.n_episodes;
         let layers = algo.model.layers.len();
         let syns = algo.model.synapses.len();
-        algo4_opt = Some(algo);
+        algo4_opt = Some((algo, restored_rewards));
         (eps, snap, layers, syns)
     } else if algo_choice == "csdp5" {
         log::info!("Using Algorithm CSDP5 (Multi-Class MC SNN)");
@@ -223,20 +248,42 @@ fn main() -> Result<(), Box<dyn Error>> {
             state_bounds.clone(),
         )
         .expect("Failed to create AlgorithmCSDP5");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
+        }
+        let mut restored_rewards = None;
+        if resume {
+            let cp_dir = std::path::Path::new("checkpoints/csdp5");
+            if cp_dir.join("training_state.json").exists() {
+                match algo.load_checkpoint(cp_dir) {
+                    Ok(rewards) => {
+                        log::info!("Resumed from checkpoint (episode {})", algo.start_episode);
+                        algo.local_rewards = rewards.clone();
+                        restored_rewards = Some(rewards);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load checkpoint: {}. Starting fresh.", e);
+                    }
+                }
+            } else {
+                log::info!("No checkpoint found at {:?}. Starting fresh.", cp_dir);
+            }
         }
         let snap = algo.model.get_visualization_snapshot();
         let eps = algo.n_episodes;
         let layers = algo.model.layers.len();
         let syns = algo.model.synapses.len();
-        algo5_opt = Some(algo);
+        algo5_opt = Some((algo, restored_rewards));
         (eps, snap, layers, syns)
     } else if algo_choice == "ff1" {
         log::info!("Using Algorithm FF1 (FF Model - State/Action Iterator)");
         let mut algo = AlgorithmFF1::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF1");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = Err(candle_core::Error::Msg(
@@ -251,7 +298,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::info!("Using Algorithm FF2 (FF Model - Transition Evaluator)");
         let mut algo = AlgorithmFF2::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF2");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = Err(candle_core::Error::Msg(
@@ -266,7 +315,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::info!("Using Algorithm FF3 (FF Model - Probabilistic Rank Trajectory)");
         let mut algo = AlgorithmFF3::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF3");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = Err(candle_core::Error::Msg(
@@ -281,7 +332,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::info!("Using Algorithm FF4 (FF Model - Temporal Contrastive RL)");
         let mut algo = AlgorithmFF4::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFF4");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = Err(candle_core::Error::Msg(
@@ -290,13 +343,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         let eps = algo.n_episodes;
         let layers = algo.model.layers.len();
         let syns = 0;
-        algo_ff4_opt = Some(algo);
+        algo_ff4_opt = Some((algo, None));
         (eps, snap, layers, syns)
     } else if algo_choice == "ffsac" {
         log::info!("Using Algorithm FFSAC (FF Model - Soft Actor-Critic)");
         let mut algo = AlgorithmFFSAC::new(state_size, action_size, vec![256, 128], device.clone())
             .expect("Failed to create AlgorithmFFSAC");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = Err(candle_core::Error::Msg(
@@ -312,7 +367,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut algo =
             AlgorithmFFMulti1::new(state_size, action_size, vec![256, 128], device.clone())
                 .expect("Failed to create AlgorithmFFMulti1");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let snap = Err(candle_core::Error::Msg(
@@ -328,7 +385,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut algo =
             AlgorithmFFMulti2::new(state_size, action_size, vec![512, 256, 128], device.clone())
                 .expect("Failed to create AlgorithmFFMulti2");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         // Resume from checkpoint if --resume and a checkpoint exists.
@@ -339,6 +398,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match algo.load_checkpoint(cp_dir) {
                     Ok(rewards) => {
                         log::info!("Resumed from checkpoint (episode {})", algo.start_episode);
+                        algo.local_rewards = rewards.clone();
                         restored_rewards = Some(rewards);
                     }
                     Err(e) => {
@@ -361,7 +421,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         log::info!("Using Algorithm FF PPO (PPO with Forward-Forward Models)");
         let mut algo = AlgorithmFFPPO::new(state_size, action_size, device.clone())
             .expect("Failed to create AlgorithmFFPPO");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let mut restored_rewards = None;
@@ -371,6 +433,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 match algo.load_checkpoint(cp_dir) {
                     Ok(rewards) => {
                         log::info!("Resumed from checkpoint (episode {})", algo.start_episode);
+                        algo.local_rewards = rewards.clone();
                         restored_rewards = Some(rewards);
                     }
                     Err(e) => {
@@ -398,7 +461,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             dt,
         )
         .expect("Failed to create AlgorithmCSDPPPO");
-        if infinite_epochs {
+        if let Some(n) = n_episodes_override {
+            algo.n_episodes = n;
+        } else if infinite_epochs {
             algo.n_episodes = usize::MAX - 1;
         }
         let mut restored_rewards = None;
@@ -462,9 +527,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo3_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
-    } else if let Some(mut algo) = algo4_opt {
+    } else if let Some((mut algo, restored_rewards)) = algo4_opt {
+        if let Some(rewards) = restored_rewards
+            && let Some(ref vs) = vis_state_arg
+                && let Ok(mut state) = vs.lock() {
+                    state.epoch_rewards = rewards;
+                }
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
-    } else if let Some(mut algo) = algo5_opt {
+    } else if let Some((mut algo, restored_rewards)) = algo5_opt {
+        if let Some(rewards) = restored_rewards
+            && let Some(ref vs) = vis_state_arg
+                && let Ok(mut state) = vs.lock() {
+                    state.epoch_rewards = rewards;
+                }
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ff1_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
@@ -472,7 +547,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ff3_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
-    } else if let Some(mut algo) = algo_ff4_opt {
+    } else if let Some((mut algo, restored_rewards)) = algo_ff4_opt {
+        if let Some(rewards) = restored_rewards
+            && let Some(ref vs) = vis_state_arg
+                && let Ok(mut state) = vs.lock() {
+                    state.epoch_rewards = rewards;
+                }
         algo.run(env.as_mut(), visualize, vis_state_arg)?;
     } else if let Some(mut algo) = algo_ffsac_opt {
         algo.run(env.as_mut(), visualize, vis_state_arg)?;

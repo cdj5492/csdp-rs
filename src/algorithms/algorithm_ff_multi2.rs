@@ -123,6 +123,7 @@ pub struct AlgorithmFFMulti2 {
     pub target_sync_interval: usize,
     /// Episode number to start from (0 = fresh run, >0 = resumed).
     pub start_episode: usize,
+    pub local_rewards: Vec<(usize, f32)>,
 }
 
 impl AlgorithmFFMulti2 {
@@ -165,8 +166,9 @@ impl AlgorithmFFMulti2 {
             min_return: 0.0,
             max_return: 0.0,
             bounds_initialized: false,
-            target_sync_interval: 10, // sync every N episodes
+            target_sync_interval: 10,
             start_episode: 0,
+            local_rewards: Vec::new(),
         })
     }
 
@@ -200,6 +202,13 @@ impl AlgorithmFFMulti2 {
         };
         let json = serde_json::to_string(&state)?;
         std::fs::write(dir.join("training_state.json"), json)?;
+
+        // Also save as CSV for easier access
+        let mut csv = String::from("epoch,reward\n");
+        for (ep, r) in epoch_rewards {
+            csv.push_str(&format!("{},{}\n", ep, r));
+        }
+        std::fs::write(dir.join("epoch_rewards.csv"), csv)?;
 
         log::info!(
             "Checkpoint saved to {:?} (episode {}, buffer size {}, rewards history {})",
@@ -260,9 +269,9 @@ impl AlgorithmFFMulti2 {
 ///   [28..30] boolean flags     (0 or 1)
 /// Grid states are 8-dimensional with values in [0, 50).
 fn normalize_state(raw: &[f64]) -> Vec<f32> {
-    if raw.len() == 31 {
+    if raw.len() == 37 {
         // RocketSim
-        let scales: [f32; 31] = [
+        let scales: [f32; 37] = [
             // ball pos xyz
             4096.0, 5120.0, 2048.0, // ball vel xyz
             6000.0, 6000.0, 6000.0, // ball ang_vel xyz
@@ -272,7 +281,8 @@ fn normalize_state(raw: &[f64]) -> Vec<f32> {
             5.5, 5.5, 5.5, // car rotation matrix (9 elements, already [-1,1])
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,   // boost amount
             100.0, // boolean flags
-            1.0, 1.0, 1.0,
+            1.0, 1.0, 1.0, // relative pos/vel
+            4096.0, 5120.0, 2048.0, 6000.0, 6000.0, 6000.0,
         ];
         raw.iter()
             .zip(scales.iter())
@@ -707,6 +717,9 @@ impl Algorithm for AlgorithmFFMulti2 {
             let training_elapsed = training_start.elapsed();
             total_training_time += training_elapsed;
 
+            let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / n_envs as f32;
+            self.local_rewards.push((episode, avg_reward));
+
             // ═══════════════════════════════════════════════════
             // Target Model Sync (every K episodes)
             // ═══════════════════════════════════════════════════
@@ -720,20 +733,21 @@ impl Algorithm for AlgorithmFFMulti2 {
             }
 
             // ═══════════════════════════════════════════════════
-            // Checkpointing
+            // Checkpointing & Visualization Update
             // ═══════════════════════════════════════════════════
 
-            // ── Manual save/load via visualisation UI ──
             if let Some(ref vs) = vis_state
                 && let Ok(mut state) = vs.try_lock() {
+                    state.epoch_rewards.push((episode, avg_reward));
+                    state.runtime_stats.epoch = episode;
+                    state.total_epochs = self.n_episodes;
+
                     if state.save_requested {
                         log::info!("Manual save requested...");
-                        let epoch_rewards = state.epoch_rewards.clone();
-                        // Drop the lock before doing I/O.
                         state.save_requested = false;
                         drop(state);
                         if let Err(e) =
-                            self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards)
+                            self.save_checkpoint(checkpoint_dir, episode, &self.local_rewards)
                         {
                             log::error!("Manual save failed: {}", e);
                         }
@@ -743,6 +757,7 @@ impl Algorithm for AlgorithmFFMulti2 {
                         drop(state);
                         match self.load_checkpoint(checkpoint_dir) {
                             Ok(epoch_rewards) => {
+                                self.local_rewards = epoch_rewards.clone();
                                 // Push restored rewards into vis state.
                                 if let Some(ref vs2) = vis_state
                                     && let Ok(mut s) = vs2.try_lock() {
@@ -767,11 +782,7 @@ impl Algorithm for AlgorithmFFMulti2 {
 
             // ── Periodic auto-save ──
             if episode.is_multiple_of(AUTO_SAVE_INTERVAL) {
-                let epoch_rewards = vis_state
-                    .as_ref()
-                    .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
-                    .unwrap_or_default();
-                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards) {
+                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &self.local_rewards) {
                     log::error!("Auto-save failed at episode {}: {}", episode, e);
                 }
             }
@@ -805,11 +816,7 @@ impl Algorithm for AlgorithmFFMulti2 {
         // Final save on completion
         // ═══════════════════════════════════════════════════
         log::info!("Training completed. Saving final checkpoint...");
-        let epoch_rewards = vis_state
-            .as_ref()
-            .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
-            .unwrap_or_default();
-        if let Err(e) = self.save_checkpoint(checkpoint_dir, episode_end, &epoch_rewards) {
+        if let Err(e) = self.save_checkpoint(checkpoint_dir, episode - 1, &self.local_rewards) {
             log::error!("Final save failed: {}", e);
         }
 

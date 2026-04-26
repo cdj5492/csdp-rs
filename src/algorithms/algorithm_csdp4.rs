@@ -17,6 +17,7 @@ pub struct Algorithm4 {
     pub n_timesteps: usize,
     pub device: Device,
     pub buffer: Vec<(Vec<f32>, usize, f32)>, // state, action, reward
+    pub local_rewards: Vec<(usize, f32)>,
 }
 
 impl Algorithm4 {
@@ -57,7 +58,25 @@ impl Algorithm4 {
             n_timesteps: 40,
             device,
             buffer: Vec::new(),
+            local_rewards: Vec::new(),
         })
+    }
+
+    pub fn save_checkpoint(
+        &self,
+        dir: &std::path::Path,
+        _completed_episode: usize,
+        epoch_rewards: &[(usize, f32)],
+    ) -> Result<(), Box<dyn Error>> {
+        if !dir.exists() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let mut csv = String::from("epoch,reward\n");
+        for (ep, r) in epoch_rewards {
+            csv.push_str(&format!("{},{}\n", ep, r));
+        }
+        std::fs::write(dir.join("epoch_rewards.csv"), csv)?;
+        Ok(())
     }
 }
 
@@ -338,6 +357,16 @@ impl Algorithm for Algorithm4 {
             let training_elapsed = training_start.elapsed();
             total_training_time += training_elapsed;
 
+            let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / n_envs as f32;
+            self.local_rewards.push((episode, avg_reward));
+
+            if let Some(ref vs_arc) = vis_state
+                && let Ok(mut state) = vs_arc.try_lock() {
+                    state.epoch_rewards.push((episode, avg_reward));
+                    state.runtime_stats.epoch = episode;
+                    state.total_epochs = self.n_episodes;
+                }
+
             let inf_aps = if total_inference_time.as_secs_f32() > 0.0 {
                 total_inference_actions as f32 / total_inference_time.as_secs_f32()
             } else {
@@ -349,7 +378,7 @@ impl Algorithm for Algorithm4 {
                 0.0
             };
             log::info!(
-                "[Episode {} Tracking Env Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
+                "[Episode {} Reward: {:.2}] Actions/sec: {:.1} | Epochs/sec: {:.2} | Buffer: {}",
                 episode,
                 raw_rewards.iter().sum::<f64>(),
                 inf_aps,
@@ -358,16 +387,10 @@ impl Algorithm for Algorithm4 {
             );
         }
 
-        log::info!("Training completed.");
-        if let Some(ref vis_state_arc) = vis_state
-            && let Ok(state) = vis_state_arc.try_lock() {
-                let checkpoints_dir = std::path::Path::new("checkpoints");
-                if !checkpoints_dir.exists() {
-                    let _ = std::fs::create_dir_all(checkpoints_dir);
-                }
-                let csv_path = checkpoints_dir.join("epoch_rewards.csv");
-                let _ = state.save_graphs_to_csv(&csv_path);
-            }
+        log::info!("Training completed. Saving final checkpoint...");
+        let checkpoint_dir = std::path::Path::new("checkpoints/csdp4");
+        self.save_checkpoint(checkpoint_dir, self.n_episodes, &self.local_rewards)?;
+
         Ok(())
     }
 }

@@ -37,6 +37,7 @@ pub struct AlgorithmCSDP5 {
     pub bounds_initialized: bool,
     pub start_episode: usize,
     pub timesteps: usize, // SNN evaluation timesteps
+    pub local_rewards: Vec<(usize, f32)>,
 }
 
 impl AlgorithmCSDP5 {
@@ -74,6 +75,7 @@ impl AlgorithmCSDP5 {
             bounds_initialized: false,
             start_episode: 0,
             timesteps,
+            local_rewards: Vec::new(),
         })
     }
 
@@ -99,8 +101,16 @@ impl AlgorithmCSDP5 {
         };
         let json = serde_json::to_string(&state)?;
         std::fs::write(dir.join("training_state.json"), json)?;
+
+        // Also save as CSV for easier access
+        let mut csv = String::from("epoch,reward\n");
+        for (ep, r) in epoch_rewards {
+            csv.push_str(&format!("{},{}\n", ep, r));
+        }
+        std::fs::write(dir.join("epoch_rewards.csv"), csv)?;
+
         Ok(())
-    }
+        }
 
     pub fn load_checkpoint(
         &mut self,
@@ -458,10 +468,12 @@ impl Algorithm for AlgorithmCSDP5 {
 
             total_training_time += training_start.elapsed();
 
+            let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / n_envs as f32;
+            self.local_rewards.push((episode, avg_reward));
+
             // Update Visualization
             if let Some(ref vs_arc) = vis_state
                 && let Ok(mut state) = vs_arc.try_lock() {
-                    let avg_reward = raw_rewards.iter().sum::<f64>() as f32 / n_envs as f32;
                     state.epoch_rewards.push((episode, avg_reward));
                     state.runtime_stats.epoch = episode;
                     state.total_epochs = self.n_episodes;
@@ -481,11 +493,10 @@ impl Algorithm for AlgorithmCSDP5 {
                 && let Ok(mut state) = vs.try_lock() {
                     if state.save_requested {
                         log::info!("Manual save requested...");
-                        let epoch_rewards = state.epoch_rewards.clone();
                         state.save_requested = false;
                         drop(state);
                         if let Err(e) =
-                            self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards)
+                            self.save_checkpoint(checkpoint_dir, episode, &self.local_rewards)
                         {
                             log::error!("Manual save failed: {}", e);
                         }
@@ -495,6 +506,7 @@ impl Algorithm for AlgorithmCSDP5 {
                         drop(state);
                         match self.load_checkpoint(checkpoint_dir) {
                             Ok(epoch_rewards) => {
+                                self.local_rewards = epoch_rewards.clone();
                                 if let Some(ref vs2) = vis_state
                                     && let Ok(mut s) = vs2.try_lock() {
                                         s.epoch_rewards = epoch_rewards;
@@ -510,12 +522,8 @@ impl Algorithm for AlgorithmCSDP5 {
                     }
                 }
 
-            if episode.is_multiple_of(AUTO_SAVE_INTERVAL) {
-                let epoch_rewards = vis_state
-                    .as_ref()
-                    .and_then(|vs| vs.try_lock().ok().map(|s| s.epoch_rewards.clone()))
-                    .unwrap_or_default();
-                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &epoch_rewards) {
+            if episode % AUTO_SAVE_INTERVAL == 0 {
+                if let Err(e) = self.save_checkpoint(checkpoint_dir, episode, &self.local_rewards) {
                     log::error!("Auto-save failed: {}", e);
                 }
             }
@@ -546,6 +554,9 @@ impl Algorithm for AlgorithmCSDP5 {
 
             episode += 1;
         }
+
+        log::info!("Training completed. Saving final checkpoint...");
+        self.save_checkpoint(checkpoint_dir, episode - 1, &self.local_rewards)?;
 
         Ok(())
     }

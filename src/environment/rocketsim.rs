@@ -220,7 +220,7 @@ impl RocketSimEnvironment {
 
 impl Environment for RocketSimEnvironment {
     fn state_size(&self) -> usize {
-        31
+        37
     }
 
     fn action_size(&self) -> usize {
@@ -236,7 +236,7 @@ impl Environment for RocketSimEnvironment {
         let car = arena.pin_mut().get_car(self.car_id);
         let ball = arena.pin_mut().get_ball();
 
-        let mut state = Vec::with_capacity(31);
+        let mut state = Vec::with_capacity(37);
 
         state.push(ball.pos.x as f64);
         state.push(ball.pos.y as f64);
@@ -272,6 +272,13 @@ impl Environment for RocketSimEnvironment {
         state.push(if car.is_on_ground { 1.0 } else { 0.0 });
         state.push(if car.has_jumped { 1.0 } else { 0.0 });
         state.push(if car.has_double_jumped { 1.0 } else { 0.0 });
+
+        state.push((car.pos.x - ball.pos.x) as f64);
+        state.push((car.pos.y - ball.pos.y) as f64);
+        state.push((car.pos.z - ball.pos.z) as f64);
+        state.push((car.vel.x - ball.vel.x) as f64);
+        state.push((car.vel.y - ball.vel.y) as f64);
+        state.push((car.vel.z - ball.vel.z) as f64);
 
         Ok(state)
     }
